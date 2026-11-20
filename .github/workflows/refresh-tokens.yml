@@ -20,6 +20,8 @@ jobs:
           IG_TOKENS: ${{ secrets.IG_TOKENS }}
           GH_TOKEN: ${{ secrets.GH_PAT }}
         run: |
+          # Με tokens του Unified login (δεν λήγουν) δεν χρειάζεται GH_PAT ούτε ανανέωση
+          if [ -z "$GH_TOKEN" ]; then echo "Δεν υπάρχει GH_PAT, παράλειψη"; exit 0; fi
           python refresh_tokens.py > /tmp/new.json
           gh secret set IG_TOKENS < /tmp/new.json
           rm /tmp/new.json

@@ -284,9 +284,20 @@ class InstagramError(RuntimeError):
     pass
 
 
+# Δύο είδη token:
+#  • "Instagram login" (παλιές εφαρμογές): ξεκινάει με IGAA, graph.instagram.com, λήγει σε 60 μέρες
+#  • "Unified login" (εφαρμογές από τέλη Οκτ. 2026): system-user token, graph.facebook.com,
+#    δεν λήγει ποτέ
+GRAPH_FB = "https://graph.facebook.com/v23.0"
+
+
+def _host(token: str) -> str:
+    return GRAPH if token.startswith("IGAA") else GRAPH_FB
+
+
 def ig_call(method, path, token, **params):
     params["access_token"] = token
-    r = requests.request(method, f"{GRAPH}/{path}", params=params if method == "GET" else None,
+    r = requests.request(method, f"{_host(token)}/{path}", params=params if method == "GET" else None,
                          data=params if method == "POST" else None, timeout=60)
     data = r.json() if r.content else {}
     if r.status_code >= 400 or "error" in data:
@@ -295,9 +306,24 @@ def ig_call(method, path, token, **params):
     return data
 
 
-def ig_publish(token: str, image_url: str, caption: str) -> str:
-    me = ig_call("GET", "me", token, fields="user_id,username")
-    uid = me["user_id"]
+def ig_account_id(token: str, given: str | None) -> str:
+    if given:
+        return str(given)
+    if token.startswith("IGAA"):
+        return ig_call("GET", "me", token, fields="user_id")["user_id"]
+    try:
+        accts = ig_call("GET", "me/assigned_instagram_accounts", token, fields="id,username").get("data", [])
+        if len(accts) == 1:
+            return accts[0]["id"]
+    except InstagramError:
+        pass
+    raise InstagramError("Δεν βρέθηκε αυτόματα ο λογαριασμός Instagram αυτού του token. "
+                         "Βάλε στο IG_TOKENS τη μορφή {\"token\": \"...\", \"ig_id\": \"...\"}")
+
+
+def ig_publish(cred, image_url: str, caption: str) -> str:
+    token, given_id = (cred, None) if isinstance(cred, str) else (cred["token"], cred.get("ig_id"))
+    uid = ig_account_id(token, given_id)
     container = ig_call("POST", f"{uid}/media", token, image_url=image_url, caption=caption)["id"]
     for _ in range(20):  # περιμένουμε να επεξεργαστεί την εικόνα
         status = ig_call("GET", container, token, fields="status_code").get("status_code")

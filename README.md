@@ -17,26 +17,27 @@
   (Creator ή Business).
 - Σελίδα Facebook **δεν** χρειάζεται με αυτόν τον τρόπο σύνδεσης.
 
-### 3. Εφαρμογή Meta και tokens
-1. Στο https://developers.facebook.com → **Create App** → τύπος *Business*.
-2. Πρόσθεσε το προϊόν **Instagram** → **API setup with Instagram login**.
-3. **App roles → Roles → Instagram Testers**: πρόσθεσε τους 13 λογαριασμούς.
-   Από κάθε λογαριασμό αποδέξου την πρόσκληση (Instagram → Ρυθμίσεις →
-   Εφαρμογές και ιστότοποι → Προσκλήσεις testers).
-   Όσο οι λογαριασμοί είναι testers, δεν χρειάζεται App Review.
-4. Στο ίδιο σημείο του dashboard: **Add account** για κάθε λογαριασμό →
-   **Generate token**. Τα δικαιώματα που χρειάζονται είναι
-   `instagram_business_basic` και `instagram_business_content_publish`.
+### 3. Εφαρμογή Meta και tokens (Unified login)
+Οι εφαρμογές που φτιάχνονται από τα τέλη Οκτωβρίου 2026 έχουν μόνο το
+**API setup with Unified login**. Τα tokens του **δεν λήγουν ποτέ**.
+1. Η εφαρμογή πρέπει να ανήκει σε **business portfolio** (App settings → Basic → Business portfolio).
+2. **Use cases → Instagram API → Customize → Permissions and features**: πρόσθεσε τα
+   `instagram_basic` και `instagram_content_publish`.
+3. **API setup with Unified login → Generate access tokens**: πρόσθεσε κάθε λογαριασμό
+   (στο development mode ως Instagram Tester) και αποδέξου την πρόσκληση στο instagram.com →
+   Settings → Website permissions → Apps and websites → Tester invites.
+4. **Generate token** δίπλα σε κάθε λογαριασμό. Αν σε ρωτήσει για λήξη, διάλεξε **Never**.
 
 ### 4. Secrets στο GitHub (Settings → Secrets and variables → Actions)
 - **`IG_TOKENS`**: ένα JSON με το `id` του config και το token του καθενός:
   ```json
-  {"mie": "IGAAx...", "civil": "IGAAy...", "arch": "IGAAz..."}
+  {"mie": "EAA...", "arch": "EAA..."}
   ```
-- **`GH_PAT`**: fine-grained token από το GitHub (Settings → Developer settings →
-  Personal access tokens), μόνο για αυτό το repo, με δικαίωμα
-  **Secrets: Read and write**. Το χρειάζεται η αυτόματη ανανέωση των tokens,
-  που αλλιώς λήγουν σε 60 μέρες.
+  Αν στο log εμφανιστεί «Δεν βρέθηκε αυτόματα ο λογαριασμός», βάλε και το ID του
+  λογαριασμού Instagram (φαίνεται δίπλα στον λογαριασμό στο Generate access tokens):
+  `{"mie": {"token": "EAA...", "ig_id": "1784..."}}`
+- **`GH_PAT`**: χρειάζεται **μόνο** για τα παλιά tokens που ξεκινούν με `IGAA` (λήγουν σε
+  60 μέρες). Με Unified login δεν χρειάζεται.
 
 ### 5. Σύλλογοι
 Άνοιξε το `config.yaml` και πρόσθεσε ένα block για κάθε σύλλογο.

@@ -9,7 +9,13 @@ import requests
 
 tokens = json.loads(os.environ["IG_TOKENS"])
 out = {}
-for sid, tok in tokens.items():
+for sid, cred in tokens.items():
+    tok = cred if isinstance(cred, str) else cred.get("token", "")
+    if not tok.startswith("IGAA"):
+        # Τα tokens του Unified login δεν λήγουν: δεν χρειάζονται ανανέωση
+        out[sid] = cred
+        print(f"·  {sid}: δεν λήγει, δεν χρειάζεται ανανέωση", file=sys.stderr)
+        continue
     r = requests.get(
         "https://graph.instagram.com/refresh_access_token",
         params={"grant_type": "ig_refresh_token", "access_token": tok},
@@ -17,9 +23,9 @@ for sid, tok in tokens.items():
     )
     data = r.json()
     if "access_token" in data:
-        out[sid] = data["access_token"]
+        out[sid] = data["access_token"] if isinstance(cred, str) else {**cred, "token": data["access_token"]}
         print(f"✅ {sid}: ανανεώθηκε ({data.get('expires_in', 0) // 86400} μέρες)", file=sys.stderr)
     else:
-        out[sid] = tok  # κρατάμε το παλιό για να μη χαθεί
+        out[sid] = cred  # κρατάμε το παλιό για να μη χαθεί
         print(f"❌ {sid}: {data.get('error', {}).get('message', r.text)}", file=sys.stderr)
 print(json.dumps(out))
