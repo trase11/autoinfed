@@ -1,0 +1,82 @@
+# Μία εγγραφή για κάθε φοιτητικό σύλλογο / τμήμα.
+# Για να προσθέσεις νέο σύλλογο, αντέγραψε ένα block και άλλαξε τα πεδία.
+#
+#   id          μοναδικό σύντομο όνομα (λατινικά, χωρίς κενά). Με αυτό το όνομα
+#               βάζεις και το token του στο secret IG_TOKENS.
+#   name        τι γράφει πάνω-πάνω η εικόνα
+#   feed        το RSS του site (σε WordPress: https://site/?feed=rss2)
+#   color       χρώμα της εικόνας (hex)
+#   categories  (προαιρετικό) μόνο αυτές οι κατηγορίες του site ανεβαίνουν.
+#               Αν το σβήσεις, ανεβαίνουν όλα.
+#   hashtags    (προαιρετικό) μπαίνουν στο τέλος της λεζάντας
+#   enabled     false = προσωρινά εκτός
+
+sources:
+  - id: mie
+    name: "Μηχανολόγων Μηχανικών ΠΘ"
+    feed: "https://mie.uth.gr/?feed=rss2"
+    color: "#0b3d91"
+    categories: ["Ανακοινώσεις", "Νέα"]
+    hashtags: "#uth #mie #ΠανεπιστήμιοΘεσσαλίας"
+    enabled: true
+
+  - id: econ
+    name: "Οικονομικών Επιστημών ΠΘ"
+    # Οι ανακοινώσεις εδώ είναι ξεχωριστή ενότητα, όχι απλά άρθρα,
+    # γι' αυτό το feed είναι /news/feed/ και όχι /?feed=rss2 (που είναι άδειο)
+    feed: "https://econ.uth.gr/news/feed/"
+    color: "#1d6b4f"
+    hashtags: "#uth #econ #ΠανεπιστήμιοΘεσσαλίας"
+    enabled: false   # ενεργοποίησέ το μετά τη δοκιμή
+
+  - id: civ
+    name: "Πολιτικών Μηχανικών ΠΘ"
+    feed: "https://civ.uth.gr/news/feed/"       # όπως στο econ: ξεχωριστή ενότητα news
+    color: "#8a1c1c"
+    hashtags: "#uth #civ #ΠανεπιστήμιοΘεσσαλίας"
+    enabled: false   # ενεργοποίησέ το μετά τη δοκιμή
+
+  - id: prd
+    name: "Μηχανικών Χωροταξίας ΠΘ"
+    feed: "https://www.prd.uth.gr/?feed=rss2"
+    color: "#6a3d9a"
+    hashtags: "#uth #prd #ΠανεπιστήμιοΘεσσαλίας"
+    enabled: false   # ενεργοποίησέ το μετά τη δοκιμή
+
+  - id: gdia
+    name: "Γλωσσικών & Διαπολιτισμικών ΠΘ"
+    feed: "https://gdia.uth.gr/?feed=rss2"
+    color: "#b5541c"
+    hashtags: "#uth #gdia #ΠανεπιστήμιοΘεσσαλίας"
+    enabled: false   # ενεργοποίησέ το μετά τη δοκιμή
+
+  - id: ece
+    name: "Ηλεκτρολόγων Μηχ. & Μηχ. Υπολογιστών ΠΘ"
+    # Δεν επιβεβαιώθηκε (το site δεν απαντούσε στον έλεγχο). Αν το πρώτο run
+    # βγάλει σφάλμα για το ece, δοκίμασε https://www.e-ce.uth.gr/?feed=rss2
+    feed: "https://www.e-ce.uth.gr/category/announcements/feed/"
+    color: "#00838f"
+    hashtags: "#uth #ece #ΗΜΜΥ #ΠανεπιστήμιοΘεσσαλίας"
+    enabled: false   # ενεργοποίησέ το μετά τη δοκιμή
+
+  # Το Αρχιτεκτονικής δεν έχει RSS, οπότε διαβάζεται απευθείας η σελίδα.
+  # Η ημερομηνία στο post είναι η μέρα που εντοπίστηκε η ανακοίνωση, γιατί
+  # αυτή που δείχνει το site είναι συχνά προθεσμία (π.χ. 31/12).
+  - id: arch
+    type: html
+    name: "Αρχιτεκτόνων Μηχανικών ΠΘ"
+    url: "https://www.arch.uth.gr/el/announcements"
+    item_url: "https://www.arch.uth.gr/el/announcements/{id}"
+    feed: "https://www.arch.uth.gr"             # μόνο για το domain στην εικόνα
+    color: "#37474f"
+    hashtags: "#uth #arch #ΠανεπιστήμιοΘεσσαλίας"
+    enabled: true
+
+settings:
+  # Πόσα posts το πολύ ανά σύλλογο σε κάθε ωριαίο έλεγχο
+  max_posts_per_run: 4
+  # Στην πρώτη εκτέλεση για νέο σύλλογο: πόσες από τις πιο πρόσφατες
+  # ανακοινώσεις να ανέβουν (οι υπόλοιπες σημειώνονται ως "ήδη γνωστές")
+  first_run_posts: 0
+  # Μετά από τόσες αποτυχημένες προσπάθειες μια ανακοίνωση παραλείπεται
+  max_attempts: 3

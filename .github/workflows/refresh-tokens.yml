@@ -1,0 +1,25 @@
+name: Ανανέωση tokens Instagram
+
+# Τα tokens λήγουν σε 60 μέρες. Αυτό τα ανανεώνει την 1η και 15η κάθε μήνα.
+on:
+  schedule:
+    - cron: "23 3 1,15 * *"
+  workflow_dispatch:
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install requests
+      - name: Ανανέωση και αποθήκευση στο secret
+        env:
+          IG_TOKENS: ${{ secrets.IG_TOKENS }}
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          python refresh_tokens.py > /tmp/new.json
+          gh secret set IG_TOKENS < /tmp/new.json
+          rm /tmp/new.json
