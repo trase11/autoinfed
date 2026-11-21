@@ -73,11 +73,11 @@ async function handle(u, env) {
   const cq = u.callback_query;
   if (cq) {
     if (String(cq.message?.chat?.id) !== String(env.CHAT_ID)) return;
-    const yes = (cq.data || "").startsWith("y:");
-    await tg(env, "answerCallbackQuery", {
-      callback_query_id: cq.id,
-      text: yes ? "✅ Ανεβαίνει στο Instagram σε ~1 λεπτό" : "❌ Δεν θα ανέβει",
-    });
+    const data = cq.data || "";
+    const text = data.startsWith("y:") ? "✅ Ανεβαίνει στο Instagram σε ~1 λεπτό"
+      : data.startsWith("s:") ? "🎨 Φτιάχνω τη νέα εκδοχή, έρχεται σε ~1 λεπτό"
+      : "❌ Δεν θα ανέβει";
+    await tg(env, "answerCallbackQuery", { callback_query_id: cq.id, text });
     await dispatch(env, u.update_id);
     return;
   }

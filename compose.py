@@ -148,59 +148,97 @@ def handle_message(tg, state: dict, msg: dict, srcs_by_id: dict, button_to_sid: 
     return True
 
 
-def build(tg, c: dict, src: dict, stories: bool) -> dict:
-    """Κατεβάζει τις φωτογραφίες, φτιάχνει τις σελίδες και επιστρέφει την εγγραφή pending."""
-    cid = hashlib.sha1(f"{c['sid']}{c['title']}{time.time()}".encode()).hexdigest()[:12]
-    folder = IMAGES / c["sid"] / f"custom_{cid}"
-    raw = [tg.download(fid, folder / f"raw_{i}.jpg") for i, fid in enumerate(c["photos"])]
-    now = datetime.now(ATHENS)
-    slides = []
-    total = len(raw) + (0 if c.get("own_cover") else 1)
-    swipe = ("Σύρε για περισσότερα", "→") if total > 1 else ("", "")
-    if c.get("own_cover"):
-        slides.append(theme_dap.photo_slide(raw[0], folder / "s00.jpg", fill=True))
-        rest = raw[1:]
-    else:
-        slides.append(theme_dap.make_image(src, c["title"], now, "", "", folder / "s00.jpg", footer=swipe))
-        rest = raw
-    for i, r in enumerate(rest, 1):
-        slides.append(theme_dap.photo_slide(r, folder / f"s{i:02d}.jpg"))
-    story = None
-    if stories:
-        if c.get("own_cover"):
-            story = theme_dap.photo_slide(raw[0], folder / "story.jpg", story=True, fill=True)
-        else:
-            story = theme_dap.make_image(src, c["title"], now, "", "", folder / "story.jpg",
-                                         story=True, footer=("", ""))
-    for r in raw:                            # τα πρωτότυπα δεν χρειάζονται στο repo
-        r.unlink(missing_ok=True)
-    caption = c.get("caption") or c["title"]
-    if src.get("hashtags") and src["hashtags"] not in caption:
-        caption = f"{caption}\n\n{src['hashtags']}"
-    return {"kind": "custom", "sid": c["sid"], "key": f"custom:{cid}", "title": c["title"],
-            "date": now.isoformat(), "excerpt": "", "link": "", "category": "",
-            "caption": caption[:2200], "own_cover": bool(c.get("own_cover")),
-            "slides": [str(p.relative_to(ROOT)) for p in slides],
-            "img": str(slides[0].relative_to(ROOT)),
-            "story": str(story.relative_to(ROOT)) if story else None}
+def _keep_raw(path: Path) -> Path:
+    """Κρατάμε τις φωτογραφίες (σε λογικό μέγεθος) για να ξαναφτιάχνονται οι σελίδες
+    όταν αλλάξει το στυλ ή ο τίτλος."""
+    from PIL import Image, ImageOps
+    im = ImageOps.exif_transpose(Image.open(path)).convert("RGB")
+    im.thumbnail((1800, 1800))
+    im.save(path, "JPEG", quality=90)
+    return path
 
 
-def regen_cover(src: dict, p: dict) -> list[Path]:
-    """Μετά από αλλαγή τίτλου: νέο εξώφυλλο (αν είναι template) και story."""
-    if p.get("own_cover"):
-        return []
+def render(src: dict, p: dict, style: str, stories: bool = True) -> list[Path]:
+    """Φτιάχνει (ξανά) όλες τις σελίδες μιας δικής σου ανακοίνωσης στο στυλ που διάλεξες.
+      blue/white : εξώφυλλο-template με τον τίτλο + όλες οι φωτογραφίες
+      photo      : η 1η φωτογραφία σβήνει σε λευκό με τον τίτλο από κάτω + οι υπόλοιπες
+      own        : η 1η φωτογραφία ολόκληρη ως εξώφυλλο + οι υπόλοιπες"""
+    raws = [ROOT / r for r in p.get("raws", [])]
     folder = ROOT / Path(p["slides"][0]).parent
     v = p.get("v", 0) + 1
     p["v"] = v
     date = datetime.fromisoformat(p["date"])
-    swipe = ("Σύρε για περισσότερα", "→") if len(p["slides"]) > 1 else ("", "")
-    cover = theme_dap.make_image(src, p["title"], date, "", "", folder / f"s00_v{v}.jpg", footer=swipe)
-    p["slides"][0] = str(cover.relative_to(ROOT))
+    look = "white" if style in ("white", "photo") else "blue"   # φόντο σελίδων-φωτογραφιών
+    slides, rest = [], raws
+    if style == "photo" and raws:
+        slides.append(theme_dap.photo_cover(src, raws[0], p["title"], folder / f"s00_v{v}.jpg",
+                                            arrow=len(raws) > 1))
+        rest = raws[1:]
+    elif style == "own" and raws:
+        slides.append(theme_dap.photo_slide(raws[0], folder / f"s00_v{v}.jpg", fill=True))
+        rest = raws[1:]
+    else:
+        swipe = ("Σύρε για περισσότερα", "→") if raws else ("", "")
+        slides.append(theme_dap.make_image(src, p["title"], date, "", "", folder / f"s00_v{v}.jpg",
+                                           footer=swipe, style=look))
+    for i, r in enumerate(rest, 1):
+        slides.append(theme_dap.photo_slide(r, folder / f"s{i:02d}_v{v}.jpg", style=look))
+    out = list(slides)
+    p["slides"] = [str(x.relative_to(ROOT)) for x in slides]
     p["img"] = p["slides"][0]
-    out = [cover]
-    if p.get("story"):
-        st = theme_dap.make_image(src, p["title"], date, "", "", folder / f"story_v{v}.jpg",
-                                  story=True, footer=("", ""))
+    p["style"] = style
+    if stories and (p.get("story") or "story" not in p):
+        if style == "photo" and raws:
+            st = theme_dap.photo_cover(src, raws[0], p["title"], folder / f"story_v{v}.jpg", story=True)
+        elif style == "own" and raws:
+            st = theme_dap.photo_slide(raws[0], folder / f"story_v{v}.jpg", story=True, fill=True)
+        else:
+            st = theme_dap.make_image(src, p["title"], date, "", "", folder / f"story_v{v}.jpg",
+                                      story=True, footer=("", ""), style=look)
         p["story"] = str(st.relative_to(ROOT))
         out.append(st)
     return out
+
+
+def build(tg, c: dict, src: dict, stories: bool) -> dict:
+    """Κατεβάζει τις φωτογραφίες, φτιάχνει τις σελίδες και επιστρέφει την εγγραφή pending."""
+    cid = hashlib.sha1(f"{c['sid']}{c['title']}{time.time()}".encode()).hexdigest()[:12]
+    folder = IMAGES / c["sid"] / f"custom_{cid}"
+    raw = [_keep_raw(tg.download(fid, folder / f"raw_{i}.jpg")) for i, fid in enumerate(c["photos"])]
+    now = datetime.now(ATHENS)
+    caption = c.get("caption") or c["title"]
+    if src.get("hashtags") and src["hashtags"] not in caption:
+        caption = f"{caption}\n\n{src['hashtags']}"
+    p = {"kind": "custom", "sid": c["sid"], "key": f"custom:{cid}", "title": c["title"],
+         "date": now.isoformat(), "excerpt": "", "link": "", "category": "",
+         "caption": caption[:2200], "own_cover": bool(c.get("own_cover")),
+         "raws": [str(r.relative_to(ROOT)) for r in raw],
+         "slides": [str((folder / "s00.jpg").relative_to(ROOT))], "v": -1}
+    if not stories:
+        p["story"] = None
+    # με φωτογραφίες: εξ ορισμού το στυλ «φωτογραφία συλλόγου»· αλλάζει από τα κουμπιά
+    style = "own" if c.get("own_cover") else ("photo" if raw else "blue")
+    render(src, p, style, stories)
+    return p
+
+
+def regen_cover(src: dict, p: dict) -> list[Path]:
+    """Μετά από αλλαγή τίτλου: ξαναφτιάχνει τις σελίδες στο ίδιο στυλ."""
+    if p.get("fixed"):
+        return []
+    if "raws" not in p:                      # παλιές εγγραφές χωρίς κρατημένες φωτογραφίες
+        if p.get("own_cover"):
+            return []
+        p["raws"] = []
+    return render(src, p, p.get("style") or ("own" if p.get("own_cover") else "blue"), bool(p.get("story")))
+
+
+def styles_for(p: dict) -> list[str]:
+    """Ποια κουμπιά στυλ έχει νόημα να εμφανιστούν."""
+    if p.get("fixed"):
+        return []
+    if p.get("kind") == "custom":
+        if "raws" not in p:
+            return []
+        return ["blue", "white"] + (["photo"] if p["raws"] else [])
+    return ["blue", "white"]

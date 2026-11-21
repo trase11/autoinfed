@@ -599,7 +599,8 @@ def approval_round(tg: Telegram, cfg: dict, state: dict, new_jobs: list, categor
         entry["preview"] = preview_text(src, entry)
         if len(entry["slides"]) > 1:
             tg.send_album([ROOT / x for x in entry["slides"]])
-        entry["msg"] = tg.send_preview(ROOT / entry["img"], entry["preview"], pid)
+        entry["msg"] = tg.send_preview(ROOT / entry["img"], entry["preview"], pid,
+                                       compose.styles_for(entry), entry.get("style"))
         pending[pid] = entry
         log(f"📨 {c['sid']}: δική σου ανακοίνωση για έγκριση ({len(entry['slides'])} εικόνες): {c['title'][:60]}")
     for c in state.get("_composes", {}).values():
@@ -613,8 +614,34 @@ def approval_round(tg: Telegram, cfg: dict, state: dict, new_jobs: list, categor
             p["preview"] = preview_text(src, p)
             if len(p.get("slides") or []) > 1:
                 tg.send_album([ROOT / x for x in p["slides"]])
-            p["msg"] = tg.send_preview(ROOT / p["img"], p["preview"], pid)
+            p["msg"] = tg.send_preview(ROOT / p["img"], p["preview"], pid,
+                                       compose.styles_for(p), p.get("style", "blue"))
             log(f"📨 {p['sid']}: ξαναστάλθηκε για έγκριση: {p['title'][:60]}")
+
+    # --- 🔵 / ⚪ / 📸 αλλαγή στυλ --------------------------------------------------
+    for pid, style in tg.styles.items():
+        p = pending.get(pid)
+        if not p or p.get("approved") or p["sid"] not in srcs:
+            continue
+        if style not in compose.styles_for(p) or style == p.get("style", "blue"):
+            continue
+        src = srcs[p["sid"]]
+        try:
+            if p.get("kind") == "custom":
+                push_images(compose.render(src, p, style, bool(p.get("story"))))
+            else:
+                regen_images(src, p, style)
+        except Exception as e:
+            log(f"⚠️  {p['sid']}: δεν άλλαξε το στυλ ({e})")
+            tg.notify(f"⚠️ Δεν άλλαξε το στυλ για «{p['title'][:60]}»: {e}")
+            continue
+        label = tg.STYLE_LABELS.get(style, style)
+        tg.set_status(p["msg"], p["preview"], f"🎨 Άλλαξε σε {label} — δες τη νέα προεπισκόπηση")
+        p["preview"] = preview_text(src, p)
+        if len(p.get("slides") or []) > 1:
+            tg.send_album([ROOT / x for x in p["slides"]])
+        p["msg"] = tg.send_preview(ROOT / p["img"], p["preview"], pid, compose.styles_for(p), style)
+        log(f"🎨 {p['sid']}: στυλ {style}{' από ' + tg.who.get(pid, '') if tg.who.get(pid) else ''}: {p['title'][:60]}")
 
     # --- ✅ / ❌ ----------------------------------------------------------------
     for pid, choice in decisions.items():
@@ -641,7 +668,7 @@ def approval_round(tg: Telegram, cfg: dict, state: dict, new_jobs: list, categor
                  "story": str(story_img.relative_to(ROOT)) if story_img else None}
         preview = preview_text(src, entry)
         try:
-            msg = tg.send_preview(img, preview, pid)
+            msg = tg.send_preview(img, preview, pid, ["blue", "white"], "blue")
         except Exception as e:
             log(f"⚠️  {src['id']}: δεν στάλθηκε προεπισκόπηση στο Telegram ({e}), θα ξαναδοκιμάσει")
             continue
@@ -702,7 +729,8 @@ def edit_pending(tg, pending: dict, pid: str, text: str, srcs: dict, by_msg: dic
     p["preview"] = preview_text(src or {"name": p["sid"]}, p)
     if p.get("kind") == "custom" and what == "τίτλος" and len(p.get("slides", [])) > 1:
         tg.send_album([ROOT / x for x in p["slides"]])
-    p["msg"] = tg.send_preview(ROOT / p["img"], p["preview"], pid)
+    p["msg"] = tg.send_preview(ROOT / p["img"], p["preview"], pid,
+                               compose.styles_for(p), p.get("style", "blue"))
     by_msg[p["msg"]] = pid
     p.pop("approved", None)      # μετά από αλλαγή χρειάζεται νέο ✅
     log(f"✏️  {p['sid']}: άλλαξε {what}: {p['title'][:60]}")
@@ -720,11 +748,18 @@ def preview_text(src: dict, p: dict) -> str:
     return head + (cap if len(cap) <= room else cap[:room - 1] + "…") + extra + hint
 
 
-def regen_images(src: dict, p: dict) -> None:
+def regen_images(src: dict, p: dict, style: str | None = None) -> None:
     """Ξαναφτιάχνει εικόνα (και story) μετά από αλλαγή τίτλου/περίληψης και τις ανεβάζει."""
     cfg = yaml.safe_load((ROOT / "config.yaml").read_text(encoding="utf-8"))
     theme = src.get("theme", cfg.get("settings", {}).get("theme", "classic"))
-    render = theme_dap.make_image if theme == "dap" else make_image
+    if style:
+        p["style"] = style
+    style = p.get("style", "blue")
+    if theme == "dap":
+        def render(*a, **k):
+            return theme_dap.make_image(*a, style=style, **k)
+    else:
+        render = make_image
     date = datetime.fromisoformat(p["date"])
     v = p.get("v", 0) + 1                      # νέο όνομα αρχείου, αλλιώς το Instagram
     p["v"] = v                                 # μπορεί να πάρει την παλιά (cache) εικόνα

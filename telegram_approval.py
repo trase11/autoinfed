@@ -29,6 +29,7 @@ class Telegram:
         self.queue_url = (queue_url or "").rstrip("/") or None
         self.live = bool(self.queue_url)
         self.who: dict[str, str] = {}      # pid → όνομα όποιου πάτησε ✅/❌ (για ομάδες)
+        self.styles: dict[str, str] = {}   # pid → στυλ που διάλεξε κάποιος (blue/white/photo)
 
     def _fetch_updates(self, offset: int, wait_for: int = 0) -> list[dict]:
         if not self.queue_url:
@@ -60,11 +61,18 @@ class Telegram:
         return data["result"]
 
     # ---- αποστολή προεπισκόπησης -------------------------------------------
-    def send_preview(self, image: Path, caption: str, pid: str) -> int:
-        keyboard = {"inline_keyboard": [[
+    STYLE_LABELS = {"blue": "🔵 Μπλε", "white": "⚪ Άσπρο", "photo": "📸 Φωτογραφία"}
+
+    def send_preview(self, image: Path, caption: str, pid: str,
+                     styles: list[str] | None = None, current: str | None = None) -> int:
+        rows = [[
             {"text": "✅ Ναι, ανέβασέ το", "callback_data": f"y:{pid}"},
             {"text": "❌ Όχι", "callback_data": f"n:{pid}"},
-        ]]}
+        ]]
+        if styles:
+            rows.append([{"text": ("• " if st == current else "") + self.STYLE_LABELS[st],
+                          "callback_data": f"s:{st}:{pid}"} for st in styles])
+        keyboard = {"inline_keyboard": rows}
         with open(image, "rb") as fh:
             msg = self._call("sendPhoto", files={"photo": fh},
                              chat_id=self.chat_id, caption=caption[:1024],
@@ -103,6 +111,16 @@ class Telegram:
                 chat = str(cq.get("message", {}).get("chat", {}).get("id", ""))
                 if self.chat_id and chat == self.chat_id and ":" in cq.get("data", ""):
                     choice, pid = cq["data"].split(":", 1)
+                    if choice == "s":                       # αλλαγή στυλ: s:<στυλ>:<pid>
+                        st, pid = pid.split(":", 1)
+                        self.styles[pid] = st
+                        if not self.live:
+                            try:
+                                self._call("answerCallbackQuery", callback_query_id=cq["id"],
+                                           text="🎨 Φτιάχνω τη νέα εκδοχή…")
+                            except TelegramError:
+                                pass
+                        continue
                     decisions[pid] = choice
                     self.who[pid] = (cq.get("from") or {}).get("first_name", "")
                     if self.live:          # την άμεση απάντηση την έδωσε ήδη ο Worker

@@ -77,8 +77,33 @@ def _tracks(img: Image.Image, h: int) -> None:
     img.paste(over, (0, 0), over)
 
 
-def _paste(img, path: Path, box_w: int, xy, anchor="lt"):
+PAPER = (246, 248, 252)
+MUTED = (96, 112, 140)
+LINE = (214, 222, 236)
+STYLES = ("blue", "white", "photo")
+
+
+def _canvas(h: int, style: str) -> Image.Image:
+    """blue = μπλε καμπάνια με γραμμές · white = λευκό με μπλε (για αντίθεση)."""
+    if style == "white":
+        img = Image.new("RGB", (W, h), PAPER)
+        ImageDraw.Draw(img).rectangle([0, 0, W, 10], fill=MID)
+        return img
+    img = _background(h)
+    _tracks(img, h)
+    return img
+
+
+def _navy(im: Image.Image) -> Image.Image:
+    solid = Image.new("RGBA", im.size, NAVY + (255,))
+    solid.putalpha(im.getchannel("A"))
+    return solid
+
+
+def _paste(img, path: Path, box_w: int, xy, anchor="lt", navy: bool = False):
     im = Image.open(path).convert("RGBA")
+    if navy:
+        im = _navy(im)
     ratio = box_w / im.width
     im = im.resize((box_w, int(im.height * ratio)), Image.LANCZOS)
     x, y = xy
@@ -90,20 +115,22 @@ def _paste(img, path: Path, box_w: int, xy, anchor="lt"):
 
 def make_image(src: dict, title: str, date: datetime, excerpt: str, category: str, out: Path,
                story: bool = False, footer: tuple[str, str] | None = None,
-               excerpt_size: int | None = None) -> Path:
-    """footer=(μικρό κείμενο, μεγάλο γαλάζιο κείμενο) αντί για «Ολόκληρη η ανακοίνωση / site»."""
+               excerpt_size: int | None = None, style: str = "blue") -> Path:
+    """footer=(μικρό κείμενο, μεγάλο γαλάζιο κείμενο) αντί για «Ολόκληρη η ανακοίνωση / site».
+    style: "blue" (καμπάνια) ή "white" (λευκό φόντο, μπλε γράμματα)."""
     H = 1920 if story else 1350
     top = 220 if story else 0           # στο story το Instagram καλύπτει πάνω/κάτω
     bottom = 300 if story else 0
-    img = _background(H)
-    _tracks(img, H)
+    wh = style == "white"
+    TXT, SUB, ACC = (NAVY, MUTED, MID) if wh else (WHITE, PALE, CYAN)
+    img = _canvas(H, "white" if wh else "blue")
     d = ImageDraw.Draw(img)
     maxw = W - 2 * PAD
 
     # --- Κεφαλίδα: λογότυπο τμήματος (αν υπάρχει) + «ΤΜΗΜΑ …» + «ΠΑΝΕΠΙΣΤΗΜΙΟ ΘΕΣΣΑΛΙΑΣ»
     y0 = top + 70
     logo = ROOT / "assets" / f"logo_{src.get('id', '')}.png"
-    dw, dh = _paste(img, logo, 118, (PAD, y0)) if logo.exists() else (0, 0)
+    dw, dh = _paste(img, logo, 118, (PAD, y0), navy=wh) if logo.exists() else (0, 0)
     hx = PAD + (dw + 28 if dw else 0)
     dept = "ΤΜΗΜΑ " + _upper_gr(re.sub(r"\s*ΠΘ$", "", src.get("name", "")))
     tf_ = ImageFont.truetype(BLACK, 52)
@@ -111,17 +138,17 @@ def make_image(src: dict, title: str, date: datetime, excerpt: str, category: st
         tf_ = ImageFont.truetype(BLACK, tf_.size - 2)
     head_h = tf_.size + 44
     ty = y0 + max(0, (dh - head_h) // 2)                     # κάθετα στο κέντρο του λογότυπου
-    d.text((hx, ty - 4), dept, font=tf_, fill=WHITE)
-    d.text((hx, ty + tf_.size + 6), "ΠΑΝΕΠΙΣΤΗΜΙΟ ΘΕΣΣΑΛΙΑΣ", font=ImageFont.truetype(MED, 30), fill=PALE)
+    d.text((hx, ty - 4), dept, font=tf_, fill=TXT)
+    d.text((hx, ty + tf_.size + 6), "ΠΑΝΕΠΙΣΤΗΜΙΟ ΘΕΣΣΑΛΙΑΣ", font=ImageFont.truetype(MED, 30), fill=SUB)
     y = y0 + max(dh, head_h) + 70
 
     # --- Ετικέτα «ΑΝΑΚΟΙΝΩΣΗ» / κατηγορία + ημερομηνία
     chip = _upper_gr(category) if category else "ΑΝΑΚΟΙΝΩΣΗ"
     cf = ImageFont.truetype(BOLD, 32)
     cw = d.textlength(chip, font=cf)
-    d.rounded_rectangle([PAD, y, PAD + cw + 44, y + 54], radius=27, fill=CYAN)
-    d.text((PAD + 22, y + 9), chip, font=cf, fill=NAVY)
-    d.text((PAD + cw + 70, y + 9), date.strftime("%d.%m.%Y"), font=ImageFont.truetype(MED, 32), fill=PALE)
+    d.rounded_rectangle([PAD, y, PAD + cw + 44, y + 54], radius=27, fill=MID if wh else CYAN)
+    d.text((PAD + 22, y + 9), chip, font=cf, fill=WHITE if wh else NAVY)
+    d.text((PAD + cw + 70, y + 9), date.strftime("%d.%m.%Y"), font=ImageFont.truetype(MED, 32), fill=SUB)
     y += 104
 
     # --- Τίτλος: κεφαλαία, ψηλά στενά γράμματα, μικραίνει μέχρι να χωρέσει
@@ -143,12 +170,12 @@ def make_image(src: dict, title: str, date: datetime, excerpt: str, category: st
         lines = lines[:max_lines]
         lines[-1] = lines[-1].rstrip(" ,.;:") + "…"
     for ln in lines:
-        d.text((PAD, y), ln, font=tf, fill=WHITE)
+        d.text((PAD, y), ln, font=tf, fill=TXT)
         y += lh
 
     # --- Γαλάζια γραμμή + περίληψη στον χώρο που περισσεύει
     y += 26
-    d.rounded_rectangle([PAD, y, PAD + 120, y + 8], radius=4, fill=CYAN)
+    d.rounded_rectangle([PAD, y, PAD + 120, y + 8], radius=4, fill=ACC)
     y += 40
     ef = ImageFont.truetype(REG, excerpt_size or (38 if story else 35))
     eh = int(ef.size * 1.38)
@@ -159,7 +186,7 @@ def make_image(src: dict, title: str, date: datetime, excerpt: str, category: st
             elines = elines[:room]
             elines[-1] = elines[-1].rstrip(" ,.;…") + "…"
         for ln in elines:
-            d.text((PAD, y), ln, font=ef, fill=PALE)
+            d.text((PAD, y), ln, font=ef, fill=SUB)
             y += eh
 
     # --- Υποσέλιδο: πού είναι ολόκληρη η ανακοίνωση + λογότυπο καμπάνιας
@@ -167,8 +194,10 @@ def make_image(src: dict, title: str, date: datetime, excerpt: str, category: st
                     src.get("site") or src.get("url") or src.get("feed", ""))
     fy = H - bottom - 60 - 70
     small, big = footer if footer is not None else ("Ολόκληρη η ανακοίνωση", domain)
-    d.text((PAD, fy), small, font=ImageFont.truetype(REG, 30), fill=PALE)
-    d.text((PAD, fy + 38), big, font=ImageFont.truetype(BOLD, 40), fill=CYAN)
+    if wh:
+        d.line([(PAD, fy - 26), (W - PAD, fy - 26)], fill=LINE, width=2)
+    d.text((PAD, fy), small, font=ImageFont.truetype(REG, 30), fill=SUB)
+    d.text((PAD, fy + 38), big, font=ImageFont.truetype(BOLD, 40), fill=ACC)
 
     out.parent.mkdir(parents=True, exist_ok=True)
     img.save(out, "JPEG", quality=92)
@@ -178,7 +207,8 @@ def make_image(src: dict, title: str, date: datetime, excerpt: str, category: st
 # --------------------------------------------------------------------------- #
 # Σελίδες καρουσέλ από φωτογραφίες
 # --------------------------------------------------------------------------- #
-def photo_slide(photo: Path, out: Path, story: bool = False, fill: bool = False) -> Path:
+def photo_slide(photo: Path, out: Path, story: bool = False, fill: bool = False,
+                style: str = "blue") -> Path:
     """fill=False: ολόκληρη η φωτογραφία πάνω στο φόντο της καμπάνιας (δεν κόβεται τίποτα,
     π.χ. σκαναρισμένη απόφαση). fill=True: γεμίζει όλο το κάδρο (για δικό σου εξώφυλλο)."""
     H = 1920 if story else 1350
@@ -195,8 +225,7 @@ def photo_slide(photo: Path, out: Path, story: bool = False, fill: bool = False)
         x, y = (ph.width - W) // 2, (ph.height - H) // 2
         img = ph.crop((x, y, x + W, y + H))
     else:
-        img = _background(H)
-        _tracks(img, H)
+        img = _canvas(H, "blue" if style == "blue" else "white")
         m = 56
         top = 220 if story else m           # περιθώρια για το UI του Instagram στο story
         bottom = 300 if story else m
@@ -207,13 +236,92 @@ def photo_slide(photo: Path, out: Path, story: bool = False, fill: bool = False)
         # απαλή σκιά + στρογγυλεμένες γωνίες
         shadow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         ImageDraw.Draw(shadow).rounded_rectangle([x + 6, y + 10, x + ph.width + 6, y + ph.height + 10],
-                                                 radius=26, fill=(0, 10, 40, 110))
+                                                 radius=26, fill=(0, 10, 40, 110 if style == "blue" else 45))
         from PIL import ImageFilter
         shadow = shadow.filter(ImageFilter.GaussianBlur(14))
         img.paste(shadow, (0, 0), shadow)
         mask = Image.new("L", ph.size, 0)
         ImageDraw.Draw(mask).rounded_rectangle([0, 0, ph.width - 1, ph.height - 1], radius=22, fill=255)
         img.paste(ph, (x, y), mask)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    img.save(out, "JPEG", quality=92)
+    return out
+
+
+# --------------------------------------------------------------------------- #
+# Εξώφυλλο «φωτογραφία συλλόγου»: η φωτογραφία σβήνει σε λευκό, τίτλος σε μπλε
+# --------------------------------------------------------------------------- #
+def photo_cover(src: dict, photo: Path, title: str, out: Path, story: bool = False,
+                subtitle: str = "", arrow: bool = False) -> Path:
+    from PIL import ImageOps
+    H = 1920 if story else 1350
+    bottom = 300 if story else 0
+    ph = ImageOps.exif_transpose(Image.open(photo)).convert("RGB")
+    ph_h = int(H * (0.62 if not story else 0.60))
+    r = max(W / ph.width, ph_h / ph.height)
+    ph = ph.resize((int(ph.width * r + 1), int(ph.height * r + 1)), Image.LANCZOS)
+    x = (ph.width - W) // 2
+    y = max(0, int((ph.height - ph_h) * 0.35))        # λίγο πιο ψηλά: κρατά τα πρόσωπα
+    ph = ph.crop((x, y, x + W, y + ph_h))
+    img = Image.new("RGB", (W, H), (255, 255, 255))
+    img.paste(ph, (0, 0))
+    # σβήσιμο προς τα λευκά στο κάτω 40% της φωτογραφίας
+    fade = int(ph_h * 0.42)
+    g = np.linspace(0, 1, fade) ** 1.4
+    alpha = np.zeros((ph_h, W), np.float32)
+    alpha[ph_h - fade:] = g[:, None]
+    white = Image.new("RGB", (W, ph_h), (255, 255, 255))
+    mask = Image.fromarray((alpha * 255).astype(np.uint8), "L")
+    img.paste(white, (0, 0), mask)
+    d = ImageDraw.Draw(img)
+
+    # τίτλος: κεντραρισμένος, μπλε, μικραίνει μέχρι να χωρέσει
+    maxw = W - 2 * 70
+    t_top = ph_h - int(fade * 0.25)
+    logo_h = 96
+    t_bot = H - bottom - logo_h - (90 if not story else 70)
+    tu = _upper_gr(title)
+    size = 150
+    while True:
+        tf = ImageFont.truetype(BLACK, size)
+        lines = _wrap(d, tu, tf, maxw)
+        lh = int(size * 1.0)
+        sub_h = 60 if subtitle else 0
+        if len(lines) * lh + sub_h <= t_bot - t_top or size <= 54:
+            break
+        size -= 4
+    block = len(lines) * lh + (60 if subtitle else 0)
+    y = t_top + (t_bot - t_top - block) // 2
+    for ln in lines:
+        w = d.textlength(ln, font=tf)
+        d.text(((W - w) / 2, y), ln, font=tf, fill=MID)
+        y += lh
+    if subtitle:
+        sf = ImageFont.truetype(BOLD, 42)
+        w = d.textlength(subtitle, font=sf)
+        d.text(((W - w) / 2, y + 12), subtitle, font=sf, fill=NAVY)
+
+    # λογότυπο + τμήμα, στο κέντρο κάτω
+    ly = H - bottom - logo_h - (40 if not story else 30)
+    logo = ROOT / "assets" / f"logo_{src.get('id', '')}.png"
+    dept = "ΤΜΗΜΑ " + _upper_gr(re.sub(r"\s*ΠΘ$", "", src.get("name", "")))
+    f1, f2 = ImageFont.truetype(BLACK, 38), ImageFont.truetype(MED, 24)
+    tw = max(d.textlength(dept, font=f1), d.textlength("ΠΑΝΕΠΙΣΤΗΜΙΟ ΘΕΣΣΑΛΙΑΣ", font=f2))
+    lw = 0
+    if logo.exists():
+        lg = _navy(Image.open(logo).convert("RGBA"))
+        lg = lg.resize((84, int(lg.height * 84 / lg.width)), Image.LANCZOS)
+        lw = lg.width + 18
+    x0 = (W - (lw + tw)) / 2
+    if lw:
+        img.paste(lg, (int(x0), int(ly + (logo_h - lg.height) / 2)), lg)
+    d.text((x0 + lw, ly + 14), dept, font=f1, fill=NAVY)
+    d.text((x0 + lw, ly + 58), "ΠΑΝΕΠΙΣΤΗΜΙΟ ΘΕΣΣΑΛΙΑΣ", font=f2, fill=MUTED)
+    if arrow and not story:
+        cx, cy, rr = W - 80, ly + logo_h / 2, 34
+        d.ellipse([cx - rr, cy - rr, cx + rr, cy + rr], fill=MID)
+        d.line([(cx - 14, cy), (cx + 12, cy)], fill=WHITE, width=6)
+        d.line([(cx + 2, cy - 12), (cx + 14, cy), (cx + 2, cy + 12)], fill=WHITE, width=6, joint="curve")
     out.parent.mkdir(parents=True, exist_ok=True)
     img.save(out, "JPEG", quality=92)
     return out
