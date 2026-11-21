@@ -606,6 +606,16 @@ def approval_round(tg: Telegram, cfg: dict, state: dict, new_jobs: list, categor
         if c.pop("changed", False) and not tg.live:
             tg.notify(compose.status_line(c, srcs))
 
+    # --- ξαναστελνόμενες εκκρεμότητες (π.χ. μετά από αποτυχία) ----------------
+    for pid, p in pending.items():
+        if p.pop("resend", False) and p["sid"] in srcs:
+            src = srcs[p["sid"]]
+            p["preview"] = preview_text(src, p)
+            if len(p.get("slides") or []) > 1:
+                tg.send_album([ROOT / x for x in p["slides"]])
+            p["msg"] = tg.send_preview(ROOT / p["img"], p["preview"], pid)
+            log(f"📨 {p['sid']}: ξαναστάλθηκε για έγκριση: {p['title'][:60]}")
+
     # --- ✅ / ❌ ----------------------------------------------------------------
     for pid, choice in decisions.items():
         p = pending.get(pid)
