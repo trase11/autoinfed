@@ -1,14 +1,5 @@
 {
- "_composes": {
-  "6721979664": {
-   "by": "Charis",
-   "caption": null,
-   "own_cover": false,
-   "photos": [],
-   "sid": "mie",
-   "title": null
-  }
- },
+ "_composes": {},
  "_custom": {
   "attempts": {},
   "seen": {
@@ -19,10 +10,31 @@
  "_eclass_last": {
   "mie": 1795278651.0196218
  },
- "_pending": {},
+ "_pending": {
+  "75b9aca050ec": {
+   "caption": "Απόφαση Δ.Σ. Μηχ μηχ Π.Θ.\n\n#uth #mie #ΠανεπιστήμιοΘεσσαλίας",
+   "category": "",
+   "date": "2026-11-21T18:33:28.872373+02:00",
+   "excerpt": "",
+   "img": "images/mie/custom_60f5641c359e/s00.jpg",
+   "key": "custom:60f5641c359e",
+   "kind": "custom",
+   "link": "",
+   "msg": 84,
+   "own_cover": false,
+   "preview": "🏛 Μηχανολόγων Μηχανικών ΠΘ\n\nΑπόφαση Δ.Σ. Μηχ μηχ Π.Θ.\n\n#uth #mie #ΠανεπιστήμιοΘεσσαλίας\n\n🖼 Καρουσέλ με 2 εικόνες\n\n📱 + story\n\n✏️ Reply εδώ για αλλαγή (κείμενο = λεζάντα, «τίτλος: …», «περίληψη: …»)",
+   "sid": "mie",
+   "slides": [
+    "images/mie/custom_60f5641c359e/s00.jpg",
+    "images/mie/custom_60f5641c359e/s01.jpg"
+   ],
+   "story": "images/mie/custom_60f5641c359e/story.jpg",
+   "title": "Απόφαση Δ.Σ. Μηχ μηχ Π.Θ."
+  }
+ },
  "_tg_hello": "-5131620464",
  "_tg_kb": "mie",
- "_tg_offset": 811151727,
+ "_tg_offset": 811151731,
  "mie": {
   "attempts": {},
   "eclass_feeds": [],
