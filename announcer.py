@@ -426,7 +426,15 @@ def approval_round(tg: Telegram, cfg: dict, state: dict, new_jobs: list):
         decisions, strangers = {}, []
 
     if not tg.chat_id:
-        log("ℹ️  Δεν έχει οριστεί telegram_chat_id στο config. Στείλε /start στο bot. "
+        try:
+            me = tg._call("getMe")
+            bot = f"@{me.get('username')}"
+            hook = tg._call("getWebhookInfo").get("url")
+            if hook:
+                log(f"⚠️  Το bot έχει webhook ({hook}), οπότε δεν φτάνουν μηνύματα εδώ")
+        except TelegramError as e:
+            bot = f"(άκυρο token: {e})"
+        log(f"ℹ️  Bot: {bot}. Δεν έχει οριστεί telegram_chat_id στο config. Στείλε /start στο bot. "
             "Συνομιλίες που έγραψαν: " + (", ".join(strangers) or "καμία ακόμα"))
         # κρατάμε τα νέα ως «άγνωστα» ώστε να ξαναβρεθούν όταν ρυθμιστεί η συνομιλία
         return None
@@ -616,7 +624,7 @@ def main() -> int:
         jobs = approval_round(tg, cfg, state, jobs)
         if jobs is None:          # δεν έχει οριστεί ακόμα σε ποια συνομιλία στέλνουμε
             save_state(state)
-            return 1
+            return 0
 
     recent: dict[str, str] = {}
     for src, key, title, date, excerpt, link, img, story_img in jobs:
