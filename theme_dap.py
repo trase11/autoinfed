@@ -92,7 +92,8 @@ def _paste(img, path: Path, box_w: int, xy, anchor="lt"):
 
 
 def make_image(src: dict, title: str, date: datetime, excerpt: str, category: str, out: Path,
-               story: bool = False) -> Path:
+               story: bool = False, footer: tuple[str, str] | None = None) -> Path:
+    """footer=(μικρό κείμενο, μεγάλο γαλάζιο κείμενο) αντί για «Ολόκληρη η ανακοίνωση / site»."""
     H = 1920 if story else 1350
     top = 220 if story else 0           # στο story το Instagram καλύπτει πάνω/κάτω
     bottom = 300 if story else 0
@@ -126,7 +127,10 @@ def make_image(src: dict, title: str, date: datetime, excerpt: str, category: st
     footer_y = H - bottom - (190 if story else 170)
     title_u = _upper_gr(title)
     max_lines = 8 if story else 6
-    size = 118 if story else 108
+    if excerpt:
+        size = 118 if story else 108
+    else:                                # σκέτος τίτλος (π.χ. εξώφυλλο καρουσέλ): πιο μεγάλος
+        size = 168 if story else 150
     while True:
         tf = ImageFont.truetype(BLACK, size)
         lines = _wrap(d, title_u, tf, maxw)
@@ -163,9 +167,54 @@ def make_image(src: dict, title: str, date: datetime, excerpt: str, category: st
     logo_w = 104 if story else 92
     lw, lh_ = _paste(img, LOGO, logo_w, (W - PAD, H - bottom - 60), anchor="rb")
     fy = H - bottom - 60 - 70
-    d.text((PAD, fy), "Ολόκληρη η ανακοίνωση", font=ImageFont.truetype(REG, 30), fill=PALE)
-    d.text((PAD, fy + 38), domain, font=ImageFont.truetype(BOLD, 40), fill=CYAN)
+    small, big = footer if footer is not None else ("Ολόκληρη η ανακοίνωση", domain)
+    d.text((PAD, fy), small, font=ImageFont.truetype(REG, 30), fill=PALE)
+    d.text((PAD, fy + 38), big, font=ImageFont.truetype(BOLD, 40), fill=CYAN)
 
+    out.parent.mkdir(parents=True, exist_ok=True)
+    img.save(out, "JPEG", quality=92)
+    return out
+
+
+# --------------------------------------------------------------------------- #
+# Σελίδες καρουσέλ από φωτογραφίες
+# --------------------------------------------------------------------------- #
+def photo_slide(photo: Path, out: Path, story: bool = False, fill: bool = False) -> Path:
+    """fill=False: ολόκληρη η φωτογραφία πάνω στο φόντο της καμπάνιας (δεν κόβεται τίποτα,
+    π.χ. σκαναρισμένη απόφαση). fill=True: γεμίζει όλο το κάδρο (για δικό σου εξώφυλλο)."""
+    H = 1920 if story else 1350
+    ph = Image.open(photo)
+    try:
+        from PIL import ImageOps
+        ph = ImageOps.exif_transpose(ph)
+    except Exception:
+        pass
+    ph = ph.convert("RGB")
+    if fill:
+        r = max(W / ph.width, H / ph.height)
+        ph = ph.resize((int(ph.width * r + 1), int(ph.height * r + 1)), Image.LANCZOS)
+        x, y = (ph.width - W) // 2, (ph.height - H) // 2
+        img = ph.crop((x, y, x + W, y + H))
+    else:
+        img = _background(H)
+        _tracks(img, H)
+        m = 56
+        top = 220 if story else m           # περιθώρια για το UI του Instagram στο story
+        bottom = 300 if story else m
+        bw, bh = W - 2 * m, H - top - bottom
+        r = min(bw / ph.width, bh / ph.height)
+        ph = ph.resize((max(1, int(ph.width * r)), max(1, int(ph.height * r))), Image.LANCZOS)
+        x, y = (W - ph.width) // 2, top + (bh - ph.height) // 2
+        # απαλή σκιά + στρογγυλεμένες γωνίες
+        shadow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        ImageDraw.Draw(shadow).rounded_rectangle([x + 6, y + 10, x + ph.width + 6, y + ph.height + 10],
+                                                 radius=26, fill=(0, 10, 40, 110))
+        from PIL import ImageFilter
+        shadow = shadow.filter(ImageFilter.GaussianBlur(14))
+        img.paste(shadow, (0, 0), shadow)
+        mask = Image.new("L", ph.size, 0)
+        ImageDraw.Draw(mask).rounded_rectangle([0, 0, ph.width - 1, ph.height - 1], radius=22, fill=255)
+        img.paste(ph, (x, y), mask)
     out.parent.mkdir(parents=True, exist_ok=True)
     img.save(out, "JPEG", quality=92)
     return out

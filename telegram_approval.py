@@ -64,12 +64,12 @@ class Telegram:
     # ---- ανάγνωση απαντήσεων -------------------------------------------------
     def read_updates(self, offset: int):
         """Επιστρέφει ({pid: 'y'|'n'}, νέο offset, άγνωστες συνομιλίες, απαντήσεις).
-        απαντήσεις = [(message_id στο οποίο απάντησε, κείμενο)] — για επεξεργασία."""
+        απαντήσεις = όλα τα μηνύματα της δικής σου συνομιλίας (dict του Telegram), με τη σειρά."""
         updates = self._call("getUpdates", offset=offset + 1 if offset else 0, timeout=0,
                              allowed_updates=["callback_query", "message"])
         decisions: dict[str, str] = {}
         strangers: list[str] = []
-        replies: list[tuple[int | None, str]] = []
+        replies: list[dict] = []
         new_offset = offset
         for u in updates:
             new_offset = max(new_offset, u["update_id"])
@@ -87,10 +87,37 @@ class Telegram:
                         pass
             elif msg:
                 chat = msg.get("chat", {})
-                if str(chat.get("id")) == self.chat_id and msg.get("text") and not msg["text"].startswith("/"):
-                    to = (msg.get("reply_to_message") or {}).get("message_id")
-                    replies.append((to, msg["text"]))
-                elif str(chat.get("id")) != self.chat_id:
+                if str(chat.get("id")) == self.chat_id:
+                    replies.append(msg)          # όλα τα δικά σου μηνύματα, με τη σειρά
+                else:
                     who = chat.get("username") or chat.get("first_name") or "?"
                     strangers.append(f"{chat.get('id')} ({who})")
         return decisions, new_offset, strangers, replies
+
+    # ---- βοηθητικά για σύνθεση ανακοινώσεων ----------------------------------
+    def send_keyboard(self, text: str, rows: list[list[str]]) -> None:
+        """Μόνιμα κουμπιά κάτω από το πεδίο γραφής (στέλνουν απλώς το κείμενό τους)."""
+        kb = {"keyboard": [[{"text": t} for t in row] for row in rows],
+              "resize_keyboard": True, "is_persistent": True}
+        self._call("sendMessage", chat_id=self.chat_id, text=text, reply_markup=kb)
+
+    def download(self, file_id: str, dest: Path) -> Path:
+        info = self._call("getFile", file_id=file_id)
+        url = f"https://api.telegram.org/file/bot{self.token}/{info['file_path']}"
+        r = requests.get(url, timeout=120)
+        r.raise_for_status()
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(r.content)
+        return dest
+
+    def send_album(self, images: list[Path]) -> None:
+        """Δείχνει όλες τις σελίδες του καρουσέλ (έως 10) ως άλμπουμ."""
+        files, media = {}, []
+        for i, p in enumerate(images[:10]):
+            files[f"f{i}"] = open(p, "rb")
+            media.append({"type": "photo", "media": f"attach://f{i}"})
+        try:
+            self._call("sendMediaGroup", files=files, chat_id=self.chat_id, media=json.dumps(media))
+        finally:
+            for fh in files.values():
+                fh.close()

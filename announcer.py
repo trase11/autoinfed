@@ -28,6 +28,7 @@ import requests
 import yaml
 from PIL import Image, ImageDraw, ImageFont
 
+import compose
 import theme_dap
 from telegram_approval import Telegram, TelegramError
 
@@ -368,6 +369,31 @@ def ig_recent_captions(cred, limit: int = 30) -> str:
         return ""
 
 
+def _wait_ready(container: str, token: str) -> None:
+    for _ in range(30):
+        status = ig_call("GET", container, token, fields="status_code").get("status_code")
+        if status == "FINISHED":
+            return
+        if status in ("ERROR", "EXPIRED"):
+            raise InstagramError(f"Η εικόνα απορρίφθηκε (status {status})")
+        time.sleep(3)
+
+
+def ig_publish_carousel(cred, image_urls: list[str], caption: str) -> str:
+    """Καρουσέλ: ένα container ανά εικόνα, μετά ένα CAROUSEL με όλα, μετά δημοσίευση."""
+    token, given_id = (cred, None) if isinstance(cred, str) else (cred["token"], cred.get("ig_id"))
+    uid = ig_account_id(token, given_id)
+    children = []
+    for url in image_urls[:10]:
+        cid = ig_call("POST", f"{uid}/media", token, image_url=url, is_carousel_item="true")["id"]
+        _wait_ready(cid, token)
+        children.append(cid)
+    container = ig_call("POST", f"{uid}/media", token, media_type="CAROUSEL",
+                        children=",".join(children), caption=caption)["id"]
+    _wait_ready(container, token)
+    return ig_call("POST", f"{uid}/media_publish", token, creation_id=container)["id"]
+
+
 def ig_publish(cred, image_url: str, caption: str = "", story: bool = False) -> str:
     token, given_id = (cred, None) if isinstance(cred, str) else (cred["token"], cred.get("ig_id"))
     uid = ig_account_id(token, given_id)
@@ -413,17 +439,18 @@ def _pid(key: str) -> str:
     return hashlib.sha1(key.encode()).hexdigest()[:12]
 
 
-def approval_round(tg: Telegram, cfg: dict, state: dict, new_jobs: list, category_of: dict):
-    """1) διαβάζει τα ✅/❌ που πατήθηκαν, 2) στέλνει προεπισκόπηση για τα νέα,
-    3) επιστρέφει όσα έχουν εγκριθεί για δημοσίευση."""
+def approval_round(tg: Telegram, cfg: dict, state: dict, new_jobs: list, category_of: dict,
+                   tokens: dict | None = None):
+    """1) διαβάζει τα ✅/❌, τις αλλαγές (reply) και τα πρόχειρα (📝 Νέα), 2) στέλνει
+    προεπισκόπηση για τα νέα, 3) επιστρέφει όσα έχουν εγκριθεί για δημοσίευση."""
     pending = state.setdefault("_pending", {})
     offset = state.get("_tg_offset", 0)
     try:
-        decisions, offset, strangers, replies = tg.read_updates(offset)
+        decisions, offset, strangers, msgs = tg.read_updates(offset)
         state["_tg_offset"] = offset
     except TelegramError as e:
         log(f"⚠️  Telegram: {e}")
-        decisions, strangers, replies = {}, [], []
+        decisions, strangers, msgs = {}, [], []
 
     if not tg.chat_id:
         try:
@@ -436,7 +463,6 @@ def approval_round(tg: Telegram, cfg: dict, state: dict, new_jobs: list, categor
             bot = f"(άκυρο token: {e})"
         log(f"ℹ️  Bot: {bot}. Δεν έχει οριστεί telegram_chat_id στο config. Στείλε /start στο bot. "
             "Συνομιλίες που έγραψαν: " + (", ".join(strangers) or "καμία ακόμα"))
-        # κρατάμε τα νέα ως «άγνωστα» ώστε να ξαναβρεθούν όταν ρυθμιστεί η συνομιλία
         return None
     if strangers:
         log(f"ℹ️  Μηνύματα από άλλους χρήστες στο bot (αγνοούνται): {', '.join(strangers)}")
@@ -446,38 +472,50 @@ def approval_round(tg: Telegram, cfg: dict, state: dict, new_jobs: list, categor
         state["_tg_hello"] = True
 
     srcs = {x["id"]: x for x in cfg["sources"]}
-    by_msg = {p["msg"]: pid for pid, p in pending.items()}
-    for to, text in replies:
-        pid = by_msg.get(to)
-        if not pid:
-            tg.notify("✏️ Για να αλλάξεις μια ανακοίνωση, κάνε «Απάντηση» (reply) στο μήνυμα "
-                      "με την εικόνα της και γράψε:\n"
-                      "• σκέτο κείμενο → νέα λεζάντα\n"
-                      "• τίτλος: … → νέος τίτλος στην εικόνα\n"
-                      "• περίληψη: … → νέο κείμενο στην εικόνα")
-            continue
-        p = pending[pid]
-        src = srcs.get(p["sid"])
-        m = re.match(r"\s*(τίτλος|τιτλος|title|περίληψη|περιληψη|summary)\s*:\s*(.*)", text, re.S | re.I)
-        what = []
-        if m and m.group(1).lower().startswith(("τ", "t")):
-            p["title"] = m.group(2).strip()   # (αν έχεις γράψει δική σου λεζάντα, μένει ίδια)
-            what.append("τίτλος")
-        elif m:
-            p["excerpt"] = m.group(2).strip()
-            what.append("περίληψη")
-        else:
-            p["caption"] = text.strip()[:2200]
-            what.append("λεζάντα")
-        if what[0] in ("τίτλος", "περίληψη") and src:
-            regen_images(src, p)
-        tg.set_status(p["msg"], p["preview"], f"✏️ Άλλαξε ({what[0]}) — δες τη νέα προεπισκόπηση")
-        p["preview"] = preview_text(src or {"name": p["sid"]}, p)
-        p["msg"] = tg.send_preview(ROOT / p["img"], p["preview"], pid)
-        by_msg[p["msg"]] = pid
-        p.pop("approved", None)      # μετά από αλλαγή χρειάζεται νέο ✅
-        log(f"✏️  {p['sid']}: άλλαξε {what[0]}: {p['title'][:60]}")
+    usable = [x for x in cfg["sources"] if x.get("enabled", True) and (tokens is None or x["id"] in tokens)]
+    button_to_sid = {compose.NEW + compose.short_name(x): x["id"] for x in usable}
+    stories_default = cfg.get("settings", {}).get("stories", True)
 
+    # --- μηνύματα: αλλαγές με reply, πρόχειρα νέων ανακοινώσεων ---------------
+    by_msg = {p["msg"]: pid for pid, p in pending.items()}
+    hinted = False
+    for m in msgs:
+        to = (m.get("reply_to_message") or {}).get("message_id")
+        text = (m.get("text") or "").strip()
+        if to in by_msg and text:
+            edit_pending(tg, pending, by_msg[to], text, srcs, by_msg)
+            continue
+        if compose.handle_message(tg, state, m, srcs, button_to_sid):
+            continue
+        if not hinted:
+            tg.notify("✏️ Για αλλαγή σε ανακοίνωση: «Απάντηση» (reply) στο μήνυμα με την εικόνα της.\n\n"
+                      + compose.HELP)
+            hinted = True
+
+    # --- ολοκληρωμένα πρόχειρα → εικόνες → προεπισκόπηση -----------------------
+    for c in state.pop("_compose_done", []):
+        src = srcs.get(c["sid"])
+        if not src:
+            continue
+        try:
+            entry = compose.build(tg, c, src, src.get("stories", stories_default))
+        except Exception as e:
+            log(f"⚠️  {c['sid']}: δεν φτιάχτηκε η δική σου ανακοίνωση: {e}")
+            tg.notify(f"⚠️ Δεν φτιάχτηκε η ανακοίνωση «{c['title']}»: {e}")
+            continue
+        push_images([ROOT / x for x in entry["slides"]] + ([ROOT / entry["story"]] if entry["story"] else []))
+        pid = _pid(entry["key"])
+        entry["preview"] = preview_text(src, entry)
+        if len(entry["slides"]) > 1:
+            tg.send_album([ROOT / x for x in entry["slides"]])
+        entry["msg"] = tg.send_preview(ROOT / entry["img"], entry["preview"], pid)
+        pending[pid] = entry
+        log(f"📨 {c['sid']}: δική σου ανακοίνωση για έγκριση ({len(entry['slides'])} εικόνες): {c['title'][:60]}")
+    c = state.get("_compose")
+    if c and c.pop("changed", False):
+        tg.notify(compose.status_line(c, srcs))
+
+    # --- ✅ / ❌ ----------------------------------------------------------------
     for pid, choice in decisions.items():
         p = pending.get(pid)
         if not p or p.get("approved"):
@@ -486,12 +524,12 @@ def approval_round(tg: Telegram, cfg: dict, state: dict, new_jobs: list, categor
             p["approved"] = True
             log(f"👍 {p['sid']}: εγκρίθηκε: {p['title'][:60]}")
         else:
-            state[p["sid"]]["seen"][p["key"]] = "rejected"
+            seen_bucket(state, p["sid"], p["key"])["seen"][p["key"]] = "rejected"
             tg.set_status(p["msg"], p["preview"], "❌ Δεν ανέβηκε (απορρίφθηκε)")
             log(f"👎 {p['sid']}: απορρίφθηκε: {p['title'][:60]}")
             del pending[pid]
 
-    # νέες ανακοινώσεις → προεπισκόπηση στο Telegram
+    # --- νέες ανακοινώσεις από τα site → προεπισκόπηση -------------------------
     for src, key, title, date, excerpt, link, img, story_img in new_jobs:
         pid = _pid(key)
         entry = {"sid": src["id"], "key": key, "title": title, "date": date.isoformat(),
@@ -508,12 +546,15 @@ def approval_round(tg: Telegram, cfg: dict, state: dict, new_jobs: list, categor
         pending[pid] = {**entry, "msg": msg, "preview": preview}
         log(f"📨 {src['id']}: στάλθηκε για έγκριση: {title[:60]}")
 
-    # όσα έχουν εγκριθεί (τώρα ή σε προηγούμενο έλεγχο και δεν ανέβηκαν ακόμα)
+    compose.ensure_keyboard(tg, state, usable)
+
+    # --- όσα έχουν εγκριθεί (τώρα ή νωρίτερα) και δεν ανέβηκαν ακόμα -------------
     ready = []
     for pid, p in pending.items():
         if p.get("approved") and p["sid"] in srcs:
+            img = [ROOT / x for x in p["slides"]] if p.get("slides") else ROOT / p["img"]
             ready.append((srcs[p["sid"]], p["key"], p["title"], datetime.fromisoformat(p["date"]),
-                          p["excerpt"], p["link"], ROOT / p["img"],
+                          p["excerpt"], p["link"], img,
                           ROOT / p["story"] if p.get("story") else None))
     waiting = sum(1 for p in pending.values() if not p.get("approved"))
     if waiting:
@@ -521,10 +562,54 @@ def approval_round(tg: Telegram, cfg: dict, state: dict, new_jobs: list, categor
     return ready
 
 
+def seen_bucket(state: dict, sid: str, key: str) -> dict:
+    """Οι δικές σου ανακοινώσεις κρατιούνται χωριστά από αυτές των site, ώστε να μην
+    επηρεάζουν την «πρώτη εκτέλεση» ενός τμήματος."""
+    if key.startswith("custom:"):
+        return state.setdefault("_custom", {"seen": {}, "attempts": {}})
+    return state.setdefault(sid, {"seen": {}, "attempts": {}})
+
+
+def edit_pending(tg, pending: dict, pid: str, text: str, srcs: dict, by_msg: dict) -> None:
+    p = pending[pid]
+    src = srcs.get(p["sid"])
+    m = re.match(r"\s*(τίτλος|τιτλος|title|περίληψη|περιληψη|summary)\s*:\s*(.*)", text, re.S | re.I)
+    if m and m.group(1).lower().startswith(("τ", "t")):
+        what = "τίτλος"
+        p["title"] = m.group(2).strip()   # (αν έχεις γράψει δική σου λεζάντα, μένει ίδια)
+    elif m:
+        if p.get("kind") == "custom":
+            tg.notify("ℹ️ Οι δικές σου ανακοινώσεις δεν έχουν περίληψη στην εικόνα· "
+                      "άλλαξε τη λεζάντα ή τον τίτλο.")
+            return
+        what = "περίληψη"
+        p["excerpt"] = m.group(2).strip()
+    else:
+        what = "λεζάντα"
+        p["caption"] = text.strip()[:2200]
+    if what != "λεζάντα" and src:
+        if p.get("kind") == "custom":
+            paths = compose.regen_cover(src, p)
+            if paths:
+                push_images(paths)
+        else:
+            regen_images(src, p)
+    tg.set_status(p["msg"], p["preview"], f"✏️ Άλλαξε ({what}) — δες τη νέα προεπισκόπηση")
+    p["preview"] = preview_text(src or {"name": p["sid"]}, p)
+    if p.get("kind") == "custom" and what == "τίτλος" and len(p.get("slides", [])) > 1:
+        tg.send_album([ROOT / x for x in p["slides"]])
+    p["msg"] = tg.send_preview(ROOT / p["img"], p["preview"], pid)
+    by_msg[p["msg"]] = pid
+    p.pop("approved", None)      # μετά από αλλαγή χρειάζεται νέο ✅
+    log(f"✏️  {p['sid']}: άλλαξε {what}: {p['title'][:60]}")
+
+
 def preview_text(src: dict, p: dict) -> str:
     cap = p.get("caption") or make_caption(src, p["title"], datetime.fromisoformat(p["date"]),
                                            p["excerpt"], p["link"])
     extra = "\n\n📱 + story" if p.get("story") else ""
+    if len(p.get("slides") or []) > 1:
+        extra = f"\n\n🖼 Καρουσέλ με {len(p['slides'])} εικόνες" + extra
     hint = "\n\n✏️ Reply εδώ για αλλαγή (κείμενο = λεζάντα, «τίτλος: …», «περίληψη: …»)"
     head = f"🏛 {src.get('name', '')}\n\n"
     room = 1024 - len(head) - len(extra) - len(hint)
@@ -689,7 +774,7 @@ def main() -> int:
         push_images([p for j in jobs for p in j[-2:] if p])
 
     if tg:
-        jobs = approval_round(tg, cfg, state, jobs, category_of)
+        jobs = approval_round(tg, cfg, state, jobs, category_of, tokens)
         if jobs is None:          # δεν έχει οριστεί ακόμα σε ποια συνομιλία στέλνουμε
             save_state(state)
             return 0
@@ -697,7 +782,7 @@ def main() -> int:
     recent: dict[str, str] = {}
     for src, key, title, date, excerpt, link, img, story_img in jobs:
         sid = src["id"]
-        s = state[sid]
+        s = seen_bucket(state, sid, key)
         token = tokens.get(sid)
         if not token:
             log(f"⚠️  {sid}: λείπει το token στο IG_TOKENS, παραλείπεται")
@@ -715,7 +800,11 @@ def main() -> int:
             continue
         try:
             custom = state.get("_pending", {}).get(_pid(key), {}).get("caption")
-            media_id = ig_publish(token, raw_url(img), custom or make_caption(src, title, date, excerpt, link))
+            caption = custom or make_caption(src, title, date, excerpt, link)
+            if isinstance(img, list) and len(img) > 1:
+                media_id = ig_publish_carousel(token, [raw_url(x) for x in img], caption)
+            else:
+                media_id = ig_publish(token, raw_url(img[0] if isinstance(img, list) else img), caption)
             s["seen"][key] = datetime.now(ATHENS).isoformat(timespec="minutes")
             s["attempts"].pop(key, None)
             log(f"✅ {sid}: δημοσιεύτηκε ({media_id})")
