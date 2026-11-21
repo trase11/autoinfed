@@ -1,21 +1,36 @@
 {
- "_compose": {
-  "caption": null,
-  "own_cover": false,
-  "photos": [],
-  "sid": "mie",
-  "title": null
- },
  "_custom": {
   "attempts": {},
   "seen": {
    "custom:fdc0337e76fb": "rejected"
   }
  },
- "_pending": {},
+ "_pending": {
+  "5681c7d82ca3": {
+   "caption": "Πήραμε απόφαση στο δς των πολ μηχ\n\n#uth #mie #ΠανεπιστήμιοΘεσσαλίας",
+   "category": "",
+   "date": "2026-11-21T16:35:10.483914+02:00",
+   "excerpt": "",
+   "img": "images/mie/custom_3614729aaf54/s00.jpg",
+   "key": "custom:3614729aaf54",
+   "kind": "custom",
+   "link": "",
+   "msg": 51,
+   "own_cover": false,
+   "preview": "🏛 Μηχανολόγων Μηχανικών ΠΘ\n\nΠήραμε απόφαση στο δς των πολ μηχ\n\n#uth #mie #ΠανεπιστήμιοΘεσσαλίας\n\n🖼 Καρουσέλ με 3 εικόνες\n\n📱 + story\n\n✏️ Reply εδώ για αλλαγή (κείμενο = λεζάντα, «τίτλος: …», «περίληψη: …»)",
+   "sid": "mie",
+   "slides": [
+    "images/mie/custom_3614729aaf54/s00.jpg",
+    "images/mie/custom_3614729aaf54/s01.jpg",
+    "images/mie/custom_3614729aaf54/s02.jpg"
+   ],
+   "story": "images/mie/custom_3614729aaf54/story.jpg",
+   "title": "Δς απόφαση πολ μηχ"
+  }
+ },
  "_tg_hello": true,
  "_tg_kb": "mie",
- "_tg_offset": 811151704,
+ "_tg_offset": 811151709,
  "mie": {
   "attempts": {},
   "seen": {
