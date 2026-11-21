@@ -184,21 +184,26 @@ def _hex(c: str) -> tuple:
     return tuple(int(c[i:i + 2], 16) for i in (0, 2, 4))
 
 
-def make_image(src: dict, title: str, date: datetime, excerpt: str, category: str, out: Path) -> Path:
+def make_image(src: dict, title: str, date: datetime, excerpt: str, category: str, out: Path,
+               story: bool = False) -> Path:
+    """story=False: post 1080x1350 (4:5). story=True: story 1080x1920 (9:16), με περιθώρια
+    πάνω/κάτω γιατί εκεί το Instagram βάζει το όνομα του λογαριασμού και το πεδίο απάντησης."""
+    H = 1920 if story else 1350
+    top = 200 if story else 0
     color = _hex(src.get("color", "#0b3d91"))
     img = Image.new("RGB", (W, H), (247, 246, 242))
     d = ImageDraw.Draw(img)
     maxw = W - 2 * PAD
 
     # Πάνω μπάντα
-    band_h = 230
+    band_h = top + 230
     d.rectangle([0, 0, W, band_h], fill=color)
-    d.text((PAD, 62), "ΑΝΑΚΟΙΝΩΣΗ", font=ImageFont.truetype(FONT_BOLD, 30), fill=(255, 255, 255, 200))
+    d.text((PAD, top + 62), "ΑΝΑΚΟΙΝΩΣΗ", font=ImageFont.truetype(FONT_BOLD, 30), fill=(255, 255, 255, 200))
     name_font = ImageFont.truetype(FONT_BOLD, 46)
     name = src["name"]
     while d.textlength(name, font=name_font) > maxw and name_font.size > 28:
         name_font = ImageFont.truetype(FONT_BOLD, name_font.size - 2)
-    d.text((PAD, 112), name, font=name_font, fill=(255, 255, 255))
+    d.text((PAD, top + 112), name, font=name_font, fill=(255, 255, 255))
 
     y = band_h + 70
 
@@ -214,17 +219,18 @@ def make_image(src: dict, title: str, date: datetime, excerpt: str, category: st
     y += 110
 
     # Τίτλος: μικραίνει μέχρι να χωρέσει σε 7 γραμμές
-    footer_y = H - 130
-    size = 72
+    footer_y = H - (330 if story else 130)
+    max_lines = 9 if story else 7
+    size = 76 if story else 72
     while True:
         tf = ImageFont.truetype(FONT_BOLD, size)
         lines = _wrap(d, title, tf, maxw)
         line_h = int(size * 1.22)
-        if len(lines) <= 7 or size <= 40:
+        if len(lines) <= max_lines or size <= 40:
             break
         size -= 4
-    if len(lines) > 7:
-        lines = lines[:7]
+    if len(lines) > max_lines:
+        lines = lines[:max_lines]
         lines[-1] = lines[-1].rstrip(" ,.;") + "…"
     for ln in lines:
         d.text((PAD, y), ln, font=tf, fill=(25, 25, 30))
@@ -236,7 +242,7 @@ def make_image(src: dict, title: str, date: datetime, excerpt: str, category: st
     eh = 48
     room = (footer_y - 40 - y) // eh
     if excerpt and room >= 2:
-        room = min(room, 6)
+        room = min(room, 10 if story else 6)
         elines = _wrap(d, excerpt, ef, maxw - 30)
         if len(elines) > room:
             elines = elines[:room]
@@ -249,7 +255,7 @@ def make_image(src: dict, title: str, date: datetime, excerpt: str, category: st
 
     # Υποσέλιδο
     d.line([PAD, footer_y, W - PAD, footer_y], fill=(215, 213, 207), width=2)
-    domain = re.sub(r"^https?://([^/?]+).*$", r"\1", src.get("feed", ""))
+    domain = re.sub(r"^https?://([^/?]+).*$", r"\1", src.get("site") or src.get("url") or src.get("feed", ""))
     ff = ImageFont.truetype(FONT_REG, 30)
     d.text((PAD, footer_y + 34), "Ολόκληρη η ανακοίνωση στο", font=ff, fill=(110, 110, 110))
     dw = d.textlength(domain, font=ImageFont.truetype(FONT_BOLD, 30))
@@ -321,10 +327,11 @@ def ig_account_id(token: str, given: str | None) -> str:
                          "Βάλε στο IG_TOKENS τη μορφή {\"token\": \"...\", \"ig_id\": \"...\"}")
 
 
-def ig_publish(cred, image_url: str, caption: str) -> str:
+def ig_publish(cred, image_url: str, caption: str = "", story: bool = False) -> str:
     token, given_id = (cred, None) if isinstance(cred, str) else (cred["token"], cred.get("ig_id"))
     uid = ig_account_id(token, given_id)
-    container = ig_call("POST", f"{uid}/media", token, image_url=image_url, caption=caption)["id"]
+    extra = {"media_type": "STORIES"} if story else {"caption": caption}
+    container = ig_call("POST", f"{uid}/media", token, image_url=image_url, **extra)["id"]
     for _ in range(20):  # περιμένουμε να επεξεργαστεί την εικόνα
         status = ig_call("GET", container, token, fields="status_code").get("status_code")
         if status == "FINISHED":
@@ -399,6 +406,7 @@ def main() -> int:
     max_per_run = st.get("max_posts_per_run", 4)
     first_run_posts = st.get("first_run_posts", 0)
     max_attempts = st.get("max_attempts", 3)
+    stories_default = st.get("stories", True)
 
     tokens = parse_tokens(os.environ.get("IG_TOKENS") or "", [s["id"] for s in cfg["sources"]])
     state = load_state()
@@ -456,7 +464,11 @@ def main() -> int:
             date = item_date(e)
             h = hashlib.sha1(key.encode()).hexdigest()[:12]
             img = make_image(src, title, date, excerpt, category, IMAGES_DIR / sid / f"{h}.jpg")
-            jobs.append((src, key, title, date, excerpt, e.get("link", ""), img))
+            story_img = None
+            if src.get("stories", stories_default):
+                story_img = make_image(src, title, date, excerpt, category,
+                                       IMAGES_DIR / sid / f"{h}_story.jpg", story=True)
+            jobs.append((src, key, title, date, excerpt, e.get("link", ""), img, story_img))
             log(f"🖼  {sid}: {title[:70]}")
 
     if args.dry_run:
@@ -464,9 +476,9 @@ def main() -> int:
         return 0
 
     if jobs:
-        push_images([j[-1] for j in jobs])
+        push_images([p for j in jobs for p in j[-2:] if p])
 
-    for src, key, title, date, excerpt, link, img in jobs:
+    for src, key, title, date, excerpt, link, img, story_img in jobs:
         sid = src["id"]
         s = state[sid]
         token = tokens.get(sid)
@@ -479,6 +491,14 @@ def main() -> int:
             s["seen"][key] = datetime.now(ATHENS).isoformat(timespec="minutes")
             s["attempts"].pop(key, None)
             log(f"✅ {sid}: δημοσιεύτηκε ({media_id})")
+            if story_img:
+                # Το story είναι «μπόνους»: αν αποτύχει, το post έχει ήδη ανέβει
+                # και δεν το ξαναδοκιμάζουμε (αλλιώς θα διπλασιαζόταν το post).
+                try:
+                    time.sleep(5)
+                    log(f"📱 {sid}: story ({ig_publish(token, raw_url(story_img), story=True)})")
+                except Exception as se:
+                    log(f"⚠️  {sid}: το post ανέβηκε, το story όχι: {se}")
         except Exception as e:
             n = s["attempts"].get(key, 0) + 1
             s["attempts"][key] = n

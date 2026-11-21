@@ -80,3 +80,6 @@ settings:
   first_run_posts: 1
   # Μετά από τόσες αποτυχημένες προσπάθειες μια ανακοίνωση παραλείπεται
   max_attempts: 3
+  # Μαζί με κάθε post ανεβαίνει και story (θέλει λογαριασμό Business, όχι Creator).
+  # Για να το κλείσεις σε ένα μόνο τμήμα, βάλε στο block του `stories: false`.
+  stories: true
