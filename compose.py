@@ -172,7 +172,7 @@ def render(src: dict, p: dict, style: str, stories: bool = True) -> list[Path]:
     slides, rest = [], raws
     if style == "photo" and raws:
         slides.append(theme_dap.photo_cover(src, raws[0], p["title"], folder / f"s00_v{v}.jpg",
-                                            arrow=len(raws) > 1))
+                                            subtitle=p.get("excerpt", ""), arrow=len(raws) > 1))
         rest = raws[1:]
     elif style == "own" and raws:
         slides.append(theme_dap.photo_slide(raws[0], folder / f"s00_v{v}.jpg", fill=True))
@@ -189,7 +189,8 @@ def render(src: dict, p: dict, style: str, stories: bool = True) -> list[Path]:
     p["style"] = style
     if stories and (p.get("story") or "story" not in p):
         if style == "photo" and raws:
-            st = theme_dap.photo_cover(src, raws[0], p["title"], folder / f"story_v{v}.jpg", story=True)
+            st = theme_dap.photo_cover(src, raws[0], p["title"], folder / f"story_v{v}.jpg", story=True,
+                                       subtitle=p.get("excerpt", ""))
         elif style == "own" and raws:
             st = theme_dap.photo_slide(raws[0], folder / f"story_v{v}.jpg", story=True, fill=True)
         else:

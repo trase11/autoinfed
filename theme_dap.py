@@ -275,31 +275,54 @@ def photo_cover(src: dict, photo: Path, title: str, out: Path, story: bool = Fal
     img.paste(white, (0, 0), mask)
     d = ImageDraw.Draw(img)
 
-    # τίτλος: κεντραρισμένος, μπλε, μικραίνει μέχρι να χωρέσει
-    maxw = W - 2 * 70
-    t_top = ph_h - int(fade * 0.25)
+    # Δύο μορφές:
+    #  • με πρόταση (subtitle): τίτλος σε μπλε + μία πρόταση από κάτω
+    #  • χωρίς: μόνο ο τίτλος, μέσα σε μπλε κουτί με άσπρα γράμματα
+    maxw = W - 2 * 90
+    t_top = ph_h - int(fade * 0.30)
     logo_h = 96
-    t_bot = H - bottom - logo_h - (90 if not story else 70)
+    t_bot = H - bottom - logo_h - (80 if not story else 60)
     tu = _upper_gr(title)
-    size = 150
-    while True:
-        tf = ImageFont.truetype(BLACK, size)
-        lines = _wrap(d, tu, tf, maxw)
-        lh = int(size * 1.0)
-        sub_h = 60 if subtitle else 0
-        if len(lines) * lh + sub_h <= t_bot - t_top or size <= 54:
-            break
-        size -= 4
-    block = len(lines) * lh + (60 if subtitle else 0)
-    y = t_top + (t_bot - t_top - block) // 2
-    for ln in lines:
-        w = d.textlength(ln, font=tf)
-        d.text(((W - w) / 2, y), ln, font=tf, fill=MID)
-        y += lh
     if subtitle:
-        sf = ImageFont.truetype(BOLD, 42)
-        w = d.textlength(subtitle, font=sf)
-        d.text(((W - w) / 2, y + 12), subtitle, font=sf, fill=NAVY)
+        size = 84
+        sf = ImageFont.truetype(MED, 38)
+        while True:
+            tf = ImageFont.truetype(BLACK, size)
+            lines = _wrap(d, tu, tf, maxw)
+            slines = _wrap(d, subtitle, sf, maxw)[:3]
+            block = len(lines) * int(size * 1.02) + 26 + len(slines) * 50
+            if (len(lines) <= 3 and block <= t_bot - t_top) or size <= 48:
+                break
+            size -= 4
+        y = t_top + (t_bot - t_top - block) // 2
+        for ln in lines:
+            w = d.textlength(ln, font=tf)
+            d.text(((W - w) / 2, y), ln, font=tf, fill=MID)
+            y += int(size * 1.02)
+        y += 26
+        for ln in slines:
+            w = d.textlength(ln, font=sf)
+            d.text(((W - w) / 2, y), ln, font=sf, fill=NAVY)
+            y += 50
+    else:
+        size = 66
+        while True:
+            tf = ImageFont.truetype(BLACK, size)
+            lines = _wrap(d, tu, tf, maxw - 60)
+            if len(lines) <= 3 or size <= 40:
+                break
+            size -= 4
+        lh = int(size * 1.08)
+        bw = max(d.textlength(l, font=tf) for l in lines) + 70
+        bh = len(lines) * lh + 44
+        y = t_top + (t_bot - t_top - bh) // 2
+        bx = (W - bw) / 2
+        d.rectangle([bx, y, bx + bw, y + bh], fill=MID)
+        yy = y + 22
+        for ln in lines:
+            w = d.textlength(ln, font=tf)
+            d.text(((W - w) / 2, yy - size * 0.06), ln, font=tf, fill=WHITE)
+            yy += lh
 
     # λογότυπο + τμήμα, στο κέντρο κάτω
     ly = H - bottom - logo_h - (40 if not story else 30)

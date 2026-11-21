@@ -704,17 +704,18 @@ def seen_bucket(state: dict, sid: str, key: str) -> dict:
 def edit_pending(tg, pending: dict, pid: str, text: str, srcs: dict, by_msg: dict) -> None:
     p = pending[pid]
     src = srcs.get(p["sid"])
-    m = re.match(r"\s*(τίτλος|τιτλος|title|περίληψη|περιληψη|summary)\s*:\s*(.*)", text, re.S | re.I)
+    m = re.match(r"\s*(τίτλος|τιτλος|title|περίληψη|περιληψη|πρόταση|προταση|summary)\s*:\s*(.*)", text, re.S | re.I)
     if m and m.group(1).lower().startswith(("τ", "t")):
         what = "τίτλος"
         p["title"] = m.group(2).strip()   # (αν έχεις γράψει δική σου λεζάντα, μένει ίδια)
     elif m:
-        if p.get("kind") == "custom":
-            tg.notify("ℹ️ Οι δικές σου ανακοινώσεις δεν έχουν περίληψη στην εικόνα· "
-                      "άλλαξε τη λεζάντα ή τον τίτλο.")
+        if p.get("kind") == "custom" and p.get("style") != "photo":
+            tg.notify("ℹ️ Πρόταση κάτω από τον τίτλο μπαίνει μόνο στο στυλ 📸 Φωτογραφία· "
+                      "εδώ άλλαξε τη λεζάντα ή τον τίτλο.")
             return
         what = "περίληψη"
-        p["excerpt"] = m.group(2).strip()
+        val = m.group(2).strip()
+        p["excerpt"] = "" if val in ("-", "—", "χωρίς", "καμία") else val
     else:
         what = "λεζάντα"
         p["caption"] = text.strip()[:2200]
@@ -742,7 +743,7 @@ def preview_text(src: dict, p: dict) -> str:
     extra = "\n\n📱 + story" if p.get("story") else ""
     if len(p.get("slides") or []) > 1:
         extra = f"\n\n🖼 Καρουσέλ με {len(p['slides'])} εικόνες" + extra
-    hint = "\n\n✏️ Reply εδώ για αλλαγή (κείμενο = λεζάντα, «τίτλος: …», «περίληψη: …»)"
+    hint = "\n\n✏️ Reply εδώ για αλλαγή (κείμενο = λεζάντα, «τίτλος: …», «περίληψη: …» · στο 📸 «πρόταση: …»)"
     head = f"🏛 {src.get('name', '')}\n\n"
     room = 1024 - len(head) - len(extra) - len(hint)
     return head + (cap if len(cap) <= room else cap[:room - 1] + "…") + extra + hint
