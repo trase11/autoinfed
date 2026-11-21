@@ -214,3 +214,80 @@ def render_semester(src: dict, sem: dict, out: Path, updated: str = "") -> Path:
     out.parent.mkdir(parents=True, exist_ok=True)
     img.convert("RGB").save(out, "JPEG", quality=93)
     return out
+
+
+def render_cover(src: dict, out: Path, semesters=(1, 3, 5, 7, 9), story: bool = False,
+                 subtitle: str = "ΧΕΙΜΕΡΙΝΟ ΕΞΑΜΗΝΟ 2026-27") -> Path:
+    """Εξώφυλλο στο ίδιο ανοιχτό ύφος με τις σελίδες των εξαμήνων."""
+    HH = 1920 if story else H
+    top = 250 if story else 0
+    img = Image.new("RGBA", (W, HH), PAPER + (255,))
+    d = ImageDraw.Draw(img, "RGBA")
+    d.rectangle([0, 0, W, 10], fill=t.MID)
+
+    x = 84
+    y0 = 70 + top
+    logo = t.ROOT / "assets" / f"logo_{src.get('id', '')}.png"
+    lw = 0
+    if logo.exists():
+        lg = _navy_logo(logo)
+        lg = lg.resize((104, int(lg.height * 104 / lg.width)), Image.LANCZOS)
+        img.paste(lg, (x, y0), lg)
+        lw = 104
+    hx = x + (lw + 24 if lw else 0)
+    d.text((hx, y0 + 8), "ΤΜΗΜΑ " + t._upper_gr(re.sub(r"\s*ΠΘ$", "", src["name"])),
+           font=ImageFont.truetype(t.BLACK, 44), fill=INK)
+    d.text((hx, y0 + 62), "ΠΑΝΕΠΙΣΤΗΜΙΟ ΘΕΣΣΑΛΙΑΣ", font=ImageFont.truetype(t.MED, 26), fill=MUTED)
+
+    # ετικέτα
+    y = y0 + 220
+    fchip = ImageFont.truetype(t.BOLD, 30)
+    chip = "ΩΡΟΛΟΓΙΟ ΠΡΟΓΡΑΜΜΑ"
+    cw = d.textlength(chip, font=fchip)
+    d.rounded_rectangle([x, y, x + cw + 40, y + 52], radius=26, fill=t.MID)
+    d.text((x + 20, y + 8), chip, font=fchip, fill=t.WHITE)
+
+    # μεγάλος τίτλος
+    y += 100
+    ft = ImageFont.truetype(t.BLACK, 150)
+    for ln in ("ΤΑ ΜΑΘΗΜΑΤΑ", "ΤΟΥ ΕΞΑΜΗΝΟΥ"):
+        d.text((x - 4, y), ln, font=ft, fill=INK)
+        y += 150
+    d.text((x, y + 20), subtitle, font=ImageFont.truetype(t.BOLD, 44), fill=t.MID)
+    y += 110
+
+    # «κουτάκια» εξαμήνων με τα χρώματα των σελίδων
+    n = len(semesters)
+    gap = 18
+    bw = (W - 2 * x - gap * (n - 1)) / n
+    bh = 190
+    fnum = ImageFont.truetype(t.BLACK, 84)
+    flab = ImageFont.truetype(t.BOLD, 24)
+    for i, s in enumerate(semesters):
+        col = PALETTE[i % len(PALETTE)]
+        bx = x + i * (bw + gap)
+        d.rounded_rectangle([bx, y, bx + bw, y + bh], radius=16, fill=_tint(col))
+        d.rounded_rectangle([bx, y, bx + bw, y + 10], radius=5, fill=col)
+        num = f"{s}ο"
+        nw = d.textlength(num, font=fnum)
+        d.text((bx + (bw - nw) / 2, y + 30), num, font=fnum, fill=INK)
+        lab = "ΕΞΑΜΗΝΟ"
+        d.text((bx + (bw - d.textlength(lab, font=flab)) / 2, y + 132), lab, font=flab, fill=col)
+    y += bh + 50
+
+    finfo = ImageFont.truetype(t.MED, 34)
+    for ln in t._wrap(d, "Μαθήματα, ώρες και αίθουσες σε μία ματιά, για κάθε εξάμηνο.", finfo, W - 2 * x):
+        d.text((x, y), ln, font=finfo, fill=MUTED)
+        y += 44
+
+    fb = HH - (300 if story else 0) - 110
+    d.line([(x, fb - 24), (W - x, fb - 24)], fill=LINE, width=2)
+    if story:
+        d.text((x, fb), "Δες το post στο προφίλ μας", font=ImageFont.truetype(t.REG, 30), fill=MUTED)
+        d.text((x, fb + 38), "Όλα τα εξάμηνα →", font=ImageFont.truetype(t.BOLD, 40), fill=t.MID)
+    else:
+        d.text((x, fb), "Σύρε για το εξάμηνό σου", font=ImageFont.truetype(t.REG, 30), fill=MUTED)
+        d.text((x, fb + 38), "1ο · 3ο · 5ο · 7ο · 9ο →", font=ImageFont.truetype(t.BOLD, 40), fill=t.MID)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    img.convert("RGB").save(out, "JPEG", quality=93)
+    return out
