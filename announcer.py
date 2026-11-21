@@ -816,6 +816,23 @@ def main() -> int:
             return 0
         tg = Telegram(tg_token, st.get("telegram_chat_id"), st.get("telegram_queue_url"))
 
+    if os.environ.get("STORIES"):
+        # Χειροκίνητο ανέβασμα εικόνων ως stories: STORIES="mie:path1,path2,..."
+        # (π.χ. εξώφυλλα για highlights). Οι εικόνες πρέπει να υπάρχουν ήδη στο repo.
+        sid, _, paths = os.environ["STORIES"].partition(":")
+        toks = parse_tokens(os.environ.get("IG_TOKENS") or "", [x["id"] for x in cfg["sources"]])
+        cred = toks.get(sid)
+        if not cred:
+            log(f"❌ δεν υπάρχει token για {sid}")
+            return 1
+        tok = cred if isinstance(cred, str) else cred["token"]
+        for rel in [x.strip() for x in paths.split(",") if x.strip()]:
+            try:
+                log(f"📱 {sid}: story {rel} → {ig_publish(tok, raw_url(ROOT / rel), story=True)}")
+            except Exception as e:
+                log(f"❌ {sid}: story {rel}: {e}")
+            time.sleep(5)
+        return 0
     if os.environ.get("CHECK_TOKENS") == "1":
         for sid, cred in parse_tokens(os.environ.get("IG_TOKENS") or "", [x["id"] for x in cfg["sources"]]).items():
             tok = cred if isinstance(cred, str) else cred["token"]
