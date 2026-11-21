@@ -239,46 +239,17 @@ def render_cover(src: dict, out: Path, semesters=(1, 3, 5, 7, 9), story: bool = 
            font=ImageFont.truetype(t.BLACK, 44), fill=INK)
     d.text((hx, y0 + 62), "ΠΑΝΕΠΙΣΤΗΜΙΟ ΘΕΣΣΑΛΙΑΣ", font=ImageFont.truetype(t.MED, 26), fill=MUTED)
 
-    # ετικέτα
-    y = y0 + 220
-    fchip = ImageFont.truetype(t.BOLD, 30)
-    chip = "ΩΡΟΛΟΓΙΟ ΠΡΟΓΡΑΜΜΑ"
-    cw = d.textlength(chip, font=fchip)
-    d.rounded_rectangle([x, y, x + cw + 40, y + 52], radius=26, fill=t.MID)
-    d.text((x + 20, y + 8), chip, font=fchip, fill=t.WHITE)
-
-    # μεγάλος τίτλος
-    y += 100
-    ft = ImageFont.truetype(t.BLACK, 150)
-    for ln in ("ΤΑ ΜΑΘΗΜΑΤΑ", "ΤΟΥ ΕΞΑΜΗΝΟΥ"):
+    # τίτλος: μόνο λευκό + μπλε, χωρίς διακοσμητικά
+    ft = ImageFont.truetype(t.BLACK, 158)
+    lines = ["ΩΡΟΛΟΓΙΟ", "ΠΡΟΓΡΑΜΜΑ", "ΧΕΙΜΕΡΙΝΟΥ", "ΕΞΑΜΗΝΟΥ"]
+    block = len(lines) * 158 + 40 + 110
+    area_top, area_bot = y0 + 150, HH - (300 if story else 0) - 170
+    y = area_top + (area_bot - area_top - block) / 2
+    for ln in lines:
         d.text((x - 4, y), ln, font=ft, fill=INK)
-        y += 150
-    d.text((x, y + 20), subtitle, font=ImageFont.truetype(t.BOLD, 44), fill=t.MID)
-    y += 110
-
-    # «κουτάκια» εξαμήνων με τα χρώματα των σελίδων
-    n = len(semesters)
-    gap = 18
-    bw = (W - 2 * x - gap * (n - 1)) / n
-    bh = 190
-    fnum = ImageFont.truetype(t.BLACK, 84)
-    flab = ImageFont.truetype(t.BOLD, 24)
-    for i, s in enumerate(semesters):
-        col = PALETTE[i % len(PALETTE)]
-        bx = x + i * (bw + gap)
-        d.rounded_rectangle([bx, y, bx + bw, y + bh], radius=16, fill=_tint(col))
-        d.rounded_rectangle([bx, y, bx + bw, y + 10], radius=5, fill=col)
-        num = f"{s}ο"
-        nw = d.textlength(num, font=fnum)
-        d.text((bx + (bw - nw) / 2, y + 30), num, font=fnum, fill=INK)
-        lab = "ΕΞΑΜΗΝΟ"
-        d.text((bx + (bw - d.textlength(lab, font=flab)) / 2, y + 132), lab, font=flab, fill=col)
-    y += bh + 50
-
-    finfo = ImageFont.truetype(t.MED, 34)
-    for ln in t._wrap(d, "Μαθήματα, ώρες και αίθουσες σε μία ματιά, για κάθε εξάμηνο.", finfo, W - 2 * x):
-        d.text((x, y), ln, font=finfo, fill=MUTED)
-        y += 44
+        y += 158
+    d.rectangle([x, y + 22, x + 120, y + 32], fill=t.MID)
+    d.text((x, y + 50), "2026-27", font=ImageFont.truetype(t.BLACK, 96), fill=t.MID)
 
     fb = HH - (300 if story else 0) - 110
     d.line([(x, fb - 24), (W - x, fb - 24)], fill=LINE, width=2)
@@ -286,8 +257,8 @@ def render_cover(src: dict, out: Path, semesters=(1, 3, 5, 7, 9), story: bool = 
         d.text((x, fb), "Δες το post στο προφίλ μας", font=ImageFont.truetype(t.REG, 30), fill=MUTED)
         d.text((x, fb + 38), "Όλα τα εξάμηνα →", font=ImageFont.truetype(t.BOLD, 40), fill=t.MID)
     else:
-        d.text((x, fb), "Σύρε για το εξάμηνό σου", font=ImageFont.truetype(t.REG, 30), fill=MUTED)
-        d.text((x, fb + 38), "1ο · 3ο · 5ο · 7ο · 9ο →", font=ImageFont.truetype(t.BOLD, 40), fill=t.MID)
+        d.text((x, fb), "Σύρε για το πρόγραμμα", font=ImageFont.truetype(t.REG, 30), fill=MUTED)
+        d.text((x, fb + 38), "Όλα τα εξάμηνα →", font=ImageFont.truetype(t.BOLD, 40), fill=t.MID)
     out.parent.mkdir(parents=True, exist_ok=True)
     img.convert("RGB").save(out, "JPEG", quality=93)
     return out
