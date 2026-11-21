@@ -166,6 +166,23 @@ def fetch_html_entries(src: dict, html_file: str | None = None) -> list:
 ECLASS_RSS = "https://eclass.uth.gr/modules/announcements/rss.php?c={code}"
 
 
+_ECLASS_LINKS: dict | None = None
+
+
+def eclass_links() -> dict:
+    """Προσωπικοί σύνδεσμοι RSS από το secret ECLASS_RSS (ένας ανά γραμμή, όπως τους
+    δίνει το eClass στις Ανακοινώσεις του μαθήματος). Το μάθημα βρίσκεται από το c=…
+    μέσα στον σύνδεσμο. Δεν τυπώνονται ποτέ, γιατί περιέχουν προσωπικό κωδικό."""
+    global _ECLASS_LINKS
+    if _ECLASS_LINKS is None:
+        _ECLASS_LINKS = {}
+        for url in re.findall(r"https?://\S+", os.environ.get("ECLASS_RSS", "")):
+            m = re.search(r"[?&]c(?:ourse)?=([A-Za-z0-9_]+)", url)
+            if m:
+                _ECLASS_LINKS[m.group(1)] = url.strip().rstrip(",;")
+    return _ECLASS_LINKS
+
+
 def fetch_eclass(src: dict, state: dict, settings: dict) -> list:
     """Ανακοινώσεις μαθημάτων eClass για τον λογαριασμό του τμήματος.
     - ελέγχονται κάθε `eclass_every_minutes` (προεπιλογή 30') για να μη φορτώνεται το eClass
@@ -183,14 +200,15 @@ def fetch_eclass(src: dict, state: dict, settings: dict) -> list:
     out = []
     for course in src["eclass"]:
         code, name = course["code"], course.get("name", course["code"])
-        url = ECLASS_RSS.format(code=code)
+        url = eclass_links().get(code) or ECLASS_RSS.format(code=code)
         try:
             r = requests.get(url, headers={"User-Agent": UA}, timeout=30)
             parsed = feedparser.parse(r.content)
             if r.status_code != 200 or (not parsed.entries and not parsed.feed.get("title")):
                 raise RuntimeError(f"HTTP {r.status_code}, δεν είναι RSS (μάλλον θέλει σύνδεση)")
         except Exception as e:
-            log(f"⚠️  {sid}: eClass {code} ({name}): {e}")
+            hint = "" if code in eclass_links() else " · βάλε τον προσωπικό σύνδεσμο RSS στο secret ECLASS_RSS"
+            log(f"⚠️  {sid}: eClass {code} ({name}): {e}{hint}")
             continue
         entries = []
         for e in parsed.entries:

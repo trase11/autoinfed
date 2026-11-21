@@ -48,6 +48,7 @@ jobs:
         env:
           IG_TOKENS: ${{ secrets.IG_TOKENS }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          ECLASS_RSS: ${{ secrets.ECLASS_RSS }}
           WAIT_FOR: ${{ github.event.inputs.wait_for }}
         run: python announcer.py
 
