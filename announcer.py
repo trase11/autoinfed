@@ -654,7 +654,8 @@ def approval_round(tg: Telegram, cfg: dict, state: dict, new_jobs: list, categor
             p["approved"] = True
             log(f"👍 {p['sid']}: εγκρίθηκε{' από ' + by if by else ''}: {p['title'][:60]}")
         else:
-            seen_bucket(state, p["sid"], p["key"])["seen"][p["key"]] = "rejected"
+            if not p.get("test"):
+                seen_bucket(state, p["sid"], p["key"])["seen"][p["key"]] = "rejected"
             tg.set_status(p["msg"], p["preview"], "❌ Δεν ανέβηκε (απορρίφθηκε" + (f" από {by})" if by else ")"))
             log(f"👎 {p['sid']}: απορρίφθηκε: {p['title'][:60]}")
             del pending[pid]
@@ -680,7 +681,11 @@ def approval_round(tg: Telegram, cfg: dict, state: dict, new_jobs: list, categor
 
     # --- όσα έχουν εγκριθεί (τώρα ή νωρίτερα) και δεν ανέβηκαν ακόμα -------------
     ready = []
-    for pid, p in pending.items():
+    for pid, p in list(pending.items()):
+        if p.get("approved") and p.get("test"):          # δοκιμαστική: δεν ανεβαίνει ποτέ
+            tg.set_status(p["msg"], p["preview"], "🧪 Δοκιμή — εγκρίθηκε, αλλά δεν ανεβαίνει στο Instagram")
+            del pending[pid]
+            continue
         if p.get("approved") and p["sid"] in srcs:
             img = [ROOT / x for x in p["slides"]] if p.get("slides") else ROOT / p["img"]
             ready.append((srcs[p["sid"]], p["key"], p["title"], datetime.fromisoformat(p["date"]),
@@ -744,7 +749,7 @@ def preview_text(src: dict, p: dict) -> str:
     if len(p.get("slides") or []) > 1:
         extra = f"\n\n🖼 Καρουσέλ με {len(p['slides'])} εικόνες" + extra
     hint = "\n\n✏️ Reply εδώ για αλλαγή (κείμενο = λεζάντα, «τίτλος: …», «περίληψη: …» · στο 📸 «πρόταση: …»)"
-    head = f"🏛 {src.get('name', '')}\n\n"
+    head = ("🧪 ΔΟΚΙΜΗ (δεν θα ανέβει)\n" if p.get("test") else "") + f"🏛 {src.get('name', '')}\n\n"
     room = 1024 - len(head) - len(extra) - len(hint)
     return head + (cap if len(cap) <= room else cap[:room - 1] + "…") + extra + hint
 
