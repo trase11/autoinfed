@@ -6,7 +6,9 @@
 """
 from __future__ import annotations
 
+import hashlib
 import json
+import time
 from pathlib import Path
 
 import requests
@@ -19,9 +21,31 @@ class TelegramError(RuntimeError):
 
 
 class Telegram:
-    def __init__(self, token: str, chat_id: int | str | None):
+    def __init__(self, token: str, chat_id: int | str | None, queue_url: str | None = None):
         self.token = token
         self.chat_id = str(chat_id) if chat_id else None
+        # Με Cloudflare Worker: τα μηνύματα έρχονται από την ουρά του Worker (webhook),
+        # και τις άμεσες απαντήσεις στον χρήστη τις δίνει ο Worker («live» λειτουργία).
+        self.queue_url = (queue_url or "").rstrip("/") or None
+        self.live = bool(self.queue_url)
+
+    def _fetch_updates(self, offset: int, wait_for: int = 0) -> list[dict]:
+        if not self.queue_url:
+            return self._call("getUpdates", offset=offset + 1 if offset else 0, timeout=0,
+                              allowed_updates=["callback_query", "message"])
+        key = hashlib.sha256(f"autoinfed-queue:{self.token}".encode()).hexdigest()
+        deadline = time.time() + 90
+        while True:
+            r = requests.get(f"{self.queue_url}/updates", params={"after": offset},
+                             headers={"Authorization": f"Bearer {key}"}, timeout=60)
+            if r.status_code != 200:
+                raise TelegramError(f"ουρά Worker: HTTP {r.status_code}")
+            ups = r.json()
+            # Το KV του Cloudflare μπορεί να αργήσει λίγα δευτερόλεπτα να «δει» το
+            # τελευταίο μήνυμα· περιμένουμε αυτό που ξεκίνησε τη δουλειά.
+            if not wait_for or any(u["update_id"] >= wait_for for u in ups) or time.time() > deadline:
+                return ups
+            time.sleep(5)
 
     def _call(self, method: str, files=None, **params):
         url = API.format(token=self.token, method=method)
@@ -62,11 +86,10 @@ class Telegram:
             pass
 
     # ---- ανάγνωση απαντήσεων -------------------------------------------------
-    def read_updates(self, offset: int):
+    def read_updates(self, offset: int, wait_for: int = 0):
         """Επιστρέφει ({pid: 'y'|'n'}, νέο offset, άγνωστες συνομιλίες, απαντήσεις).
         απαντήσεις = όλα τα μηνύματα της δικής σου συνομιλίας (dict του Telegram), με τη σειρά."""
-        updates = self._call("getUpdates", offset=offset + 1 if offset else 0, timeout=0,
-                             allowed_updates=["callback_query", "message"])
+        updates = self._fetch_updates(offset, wait_for)
         decisions: dict[str, str] = {}
         strangers: list[str] = []
         replies: list[dict] = []
@@ -80,6 +103,8 @@ class Telegram:
                 if self.chat_id and chat == self.chat_id and ":" in cq.get("data", ""):
                     choice, pid = cq["data"].split(":", 1)
                     decisions[pid] = choice
+                    if self.live:          # την άμεση απάντηση την έδωσε ήδη ο Worker
+                        continue
                     try:
                         self._call("answerCallbackQuery", callback_query_id=cq["id"],
                                    text="✅ Θα ανέβει σε λίγα λεπτά" if choice == "y" else "❌ Δεν θα ανέβει")

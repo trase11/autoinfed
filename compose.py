@@ -79,6 +79,11 @@ def status_line(c: dict, srcs_by_id: dict) -> str:
     return "\n".join(parts)
 
 
+def _say(tg, text: str) -> None:
+    if not getattr(tg, "live", False):     # με Worker, την απάντηση την έχει δώσει ήδη εκείνος
+        tg.notify(text)
+
+
 def handle_message(tg, state: dict, msg: dict, srcs_by_id: dict, button_to_sid: dict) -> bool:
     """Επεξεργάζεται ένα δικό σου μήνυμα για σύνθεση. Επιστρέφει True αν το «κατανάλωσε».
     Αν το μήνυμα ολοκληρώνει ανακοίνωση, την αφήνει στο state['_compose_done']."""
@@ -90,14 +95,14 @@ def handle_message(tg, state: dict, msg: dict, srcs_by_id: dict, button_to_sid: 
         return True
     if text in button_to_sid:
         if c and (c.get("title") or c.get("photos")):
-            tg.notify("🗑 Το προηγούμενο πρόχειρο που δεν είχε ολοκληρωθεί πετάχτηκε.")
+            _say(tg, "🗑 Το προηγούμενο πρόχειρο που δεν είχε ολοκληρωθεί πετάχτηκε.")
         state["_compose"] = {"sid": button_to_sid[text], "title": None, "caption": None,
                              "photos": [], "own_cover": False, "changed": True}
         return True
     if text == CANCEL:
         if c:
             state.pop("_compose", None)
-            tg.notify("🗑 Το πρόχειρο ακυρώθηκε.")
+            _say(tg, "🗑 Το πρόχειρο ακυρώθηκε.")
         return True
     if not c:
         return False                        # δεν υπάρχει πρόχειρο: δεν είναι για εμάς
@@ -108,7 +113,7 @@ def handle_message(tg, state: dict, msg: dict, srcs_by_id: dict, button_to_sid: 
         return True
     if text == DONE:
         if not c.get("title"):
-            tg.notify("⚠️ Λείπει ο τίτλος. Γράψε τον τίτλο και πάτα ξανά «✅ Τέλος».")
+            _say(tg, "⚠️ Λείπει ο τίτλος. Γράψε τον τίτλο και πάτα ξανά «✅ Τέλος».")
             return True
         if c.get("own_cover") and not c["photos"]:
             c["own_cover"] = False
@@ -119,7 +124,7 @@ def handle_message(tg, state: dict, msg: dict, srcs_by_id: dict, button_to_sid: 
     fid = _largest_photo(msg)
     if fid:
         if len(c["photos"]) >= MAX_SLIDES:
-            tg.notify(f"⚠️ Το καρουσέλ χωράει έως {MAX_SLIDES} εικόνες· οι επιπλέον αγνοούνται.")
+            _say(tg, f"⚠️ Το καρουσέλ χωράει έως {MAX_SLIDES} εικόνες· οι επιπλέον αγνοούνται.")
         else:
             c["photos"].append(fid)
         cap = (msg.get("caption") or "").strip()

@@ -446,7 +446,7 @@ def approval_round(tg: Telegram, cfg: dict, state: dict, new_jobs: list, categor
     pending = state.setdefault("_pending", {})
     offset = state.get("_tg_offset", 0)
     try:
-        decisions, offset, strangers, msgs = tg.read_updates(offset)
+        decisions, offset, strangers, msgs = tg.read_updates(offset, int(os.environ.get("WAIT_FOR") or 0))
         state["_tg_offset"] = offset
     except TelegramError as e:
         log(f"⚠️  Telegram: {e}")
@@ -487,7 +487,7 @@ def approval_round(tg: Telegram, cfg: dict, state: dict, new_jobs: list, categor
             continue
         if compose.handle_message(tg, state, m, srcs, button_to_sid):
             continue
-        if not hinted:
+        if not hinted and not tg.live:
             tg.notify("✏️ Για αλλαγή σε ανακοίνωση: «Απάντηση» (reply) στο μήνυμα με την εικόνα της.\n\n"
                       + compose.HELP)
             hinted = True
@@ -512,7 +512,7 @@ def approval_round(tg: Telegram, cfg: dict, state: dict, new_jobs: list, categor
         pending[pid] = entry
         log(f"📨 {c['sid']}: δική σου ανακοίνωση για έγκριση ({len(entry['slides'])} εικόνες): {c['title'][:60]}")
     c = state.get("_compose")
-    if c and c.pop("changed", False):
+    if c and c.pop("changed", False) and not tg.live:
         tg.notify(compose.status_line(c, srcs))
 
     # --- ✅ / ❌ ----------------------------------------------------------------
@@ -700,7 +700,7 @@ def main() -> int:
             log("⏸  Είναι ενεργή η έγκριση μέσω Telegram αλλά λείπει το secret "
                 "TELEGRAM_BOT_TOKEN. Δεν γίνεται τίποτα μέχρι να μπει.")
             return 0
-        tg = Telegram(tg_token, st.get("telegram_chat_id"))
+        tg = Telegram(tg_token, st.get("telegram_chat_id"), st.get("telegram_queue_url"))
 
     tokens = parse_tokens(os.environ.get("IG_TOKENS") or "", [s["id"] for s in cfg["sources"]])
     state = load_state()

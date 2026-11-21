@@ -6,7 +6,12 @@ on:
     # εκτελέσεις, οπότε με 4 προσπάθειες την ώρα γίνεται σίγουρα τουλάχιστον μία.
     # Διπλά posts δεν γίνονται: το state + ο έλεγχος λεζαντών το αποκλείουν.
     - cron: "4,19,34,49 * * * *"
-  workflow_dispatch:          # κουμπί "Run workflow" για χειροκίνητη εκτέλεση
+  workflow_dispatch:          # κουμπί "Run workflow" ή ο Cloudflare Worker (άμεσα)
+    inputs:
+      wait_for:
+        description: "update_id του Telegram που ξεκίνησε την εκτέλεση (από τον Worker)"
+        required: false
+        default: ""
 
 permissions:
   contents: write             # για να αποθηκεύει εικόνες και state στο repo
@@ -38,6 +43,7 @@ jobs:
         env:
           IG_TOKENS: ${{ secrets.IG_TOKENS }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          WAIT_FOR: ${{ github.event.inputs.wait_for }}
         run: python announcer.py
 
       - name: Αποθήκευση state
