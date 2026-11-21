@@ -44,7 +44,7 @@ sources:
     enabled: false   # ενεργοποίησέ το μετά τη δοκιμή
 
   - id: gdia
-    name: "Γλωσσικών & Διαπολιτισμικών ΠΘ"
+    name: "Γλωσσικών & Διαπολιτιστικών ΠΘ"
     feed: "https://gdia.uth.gr/?feed=rss2"
     color: "#b5541c"
     hashtags: "#uth #gdia #ΠανεπιστήμιοΘεσσαλίας"
