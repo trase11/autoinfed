@@ -568,7 +568,7 @@ def approval_round(tg: Telegram, cfg: dict, state: dict, new_jobs: list, categor
     stories_default = cfg.get("settings", {}).get("stories", True)
 
     # --- μηνύματα: αλλαγές με reply, πρόχειρα νέων ανακοινώσεων ---------------
-    by_msg = {p["msg"]: pid for pid, p in pending.items()}
+    by_msg = {p.get("msg"): pid for pid, p in pending.items() if p.get("msg")}
     hinted = False
     for m in msgs:
         to = (m.get("reply_to_message") or {}).get("message_id")
