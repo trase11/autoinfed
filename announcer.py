@@ -714,9 +714,9 @@ def edit_pending(tg, pending: dict, pid: str, text: str, srcs: dict, by_msg: dic
         what = "τίτλος"
         p["title"] = m.group(2).strip()   # (αν έχεις γράψει δική σου λεζάντα, μένει ίδια)
     elif m:
-        if p.get("kind") == "custom" and p.get("style") != "photo":
-            tg.notify("ℹ️ Πρόταση κάτω από τον τίτλο μπαίνει μόνο στο στυλ 📸 Φωτογραφία· "
-                      "εδώ άλλαξε τη λεζάντα ή τον τίτλο.")
+        if p.get("kind") == "custom":
+            tg.notify("ℹ️ Οι δικές σου ανακοινώσεις δεν έχουν περίληψη στην εικόνα· "
+                      "άλλαξε τη λεζάντα ή τον τίτλο.")
             return
         what = "περίληψη"
         val = m.group(2).strip()
@@ -748,7 +748,7 @@ def preview_text(src: dict, p: dict) -> str:
     extra = "\n\n📱 + story" if p.get("story") else ""
     if len(p.get("slides") or []) > 1:
         extra = f"\n\n🖼 Καρουσέλ με {len(p['slides'])} εικόνες" + extra
-    hint = "\n\n✏️ Reply εδώ για αλλαγή (κείμενο = λεζάντα, «τίτλος: …», «περίληψη: …» · στο 📸 «πρόταση: …»)"
+    hint = "\n\n✏️ Reply εδώ για αλλαγή (κείμενο = λεζάντα, «τίτλος: …», «περίληψη: …»)"
     head = ("🧪 ΔΟΚΙΜΗ (δεν θα ανέβει)\n" if p.get("test") else "") + f"🏛 {src.get('name', '')}\n\n"
     room = 1024 - len(head) - len(extra) - len(hint)
     return head + (cap if len(cap) <= room else cap[:room - 1] + "…") + extra + hint

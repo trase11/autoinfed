@@ -252,7 +252,8 @@ def photo_slide(photo: Path, out: Path, story: bool = False, fill: bool = False,
 # Εξώφυλλο «φωτογραφία συλλόγου»: η φωτογραφία σβήνει σε λευκό, τίτλος σε μπλε
 # --------------------------------------------------------------------------- #
 def photo_cover(src: dict, photo: Path, title: str, out: Path, story: bool = False,
-                subtitle: str = "", arrow: bool = False) -> Path:
+                subtitle: str = "", arrow: bool = False, text: bool = True) -> Path:
+    """text=False: σκέτη φωτογραφία με το σβήσιμο + λογότυπο (το κείμενο μπαίνει στο Canva)."""
     from PIL import ImageOps
     H = 1920 if story else 1350
     bottom = 300 if story else 0
@@ -283,7 +284,9 @@ def photo_cover(src: dict, photo: Path, title: str, out: Path, story: bool = Fal
     logo_h = 96
     t_bot = H - bottom - logo_h - (80 if not story else 60)
     tu = _upper_gr(title)
-    if subtitle:
+    if not text:
+        pass
+    elif subtitle:
         size = 84
         sf = ImageFont.truetype(MED, 38)
         while True:
