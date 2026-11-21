@@ -534,10 +534,11 @@ def approval_round(tg: Telegram, cfg: dict, state: dict, new_jobs: list, categor
         return None
     if strangers:
         log(f"ℹ️  Μηνύματα από άλλους χρήστες στο bot (αγνοούνται): {', '.join(strangers)}")
-    if not state.get("_tg_hello"):
+    if state.get("_tg_hello") != tg.chat_id:          # νέα συνομιλία/ομάδα → ξανά καλωσόρισμα
         tg.notify("✅ Το bot συνδέθηκε!\n\nΚάθε νέα ανακοίνωση θα σου έρχεται εδώ με κουμπιά "
                   "✅ / ❌ και θα ανεβαίνει στο Instagram μόνο αν πατήσεις ✅.")
-        state["_tg_hello"] = True
+        state["_tg_hello"] = tg.chat_id
+        state["_tg_kb"] = None                         # και ξανά τα κουμπιά
 
     srcs = {x["id"]: x for x in cfg["sources"]}
     usable = [x for x in cfg["sources"] if x.get("enabled", True) and (tokens is None or x["id"] in tokens)]
@@ -579,21 +580,23 @@ def approval_round(tg: Telegram, cfg: dict, state: dict, new_jobs: list, categor
         entry["msg"] = tg.send_preview(ROOT / entry["img"], entry["preview"], pid)
         pending[pid] = entry
         log(f"📨 {c['sid']}: δική σου ανακοίνωση για έγκριση ({len(entry['slides'])} εικόνες): {c['title'][:60]}")
-    c = state.get("_compose")
-    if c and c.pop("changed", False) and not tg.live:
-        tg.notify(compose.status_line(c, srcs))
+    for c in state.get("_composes", {}).values():
+        if c.pop("changed", False) and not tg.live:
+            tg.notify(compose.status_line(c, srcs))
 
     # --- ✅ / ❌ ----------------------------------------------------------------
     for pid, choice in decisions.items():
         p = pending.get(pid)
         if not p or p.get("approved"):
             continue
+        by = tg.who.get(pid, "")
+        p["by"] = by
         if choice == "y":
             p["approved"] = True
-            log(f"👍 {p['sid']}: εγκρίθηκε: {p['title'][:60]}")
+            log(f"👍 {p['sid']}: εγκρίθηκε{' από ' + by if by else ''}: {p['title'][:60]}")
         else:
             seen_bucket(state, p["sid"], p["key"])["seen"][p["key"]] = "rejected"
-            tg.set_status(p["msg"], p["preview"], "❌ Δεν ανέβηκε (απορρίφθηκε)")
+            tg.set_status(p["msg"], p["preview"], "❌ Δεν ανέβηκε (απορρίφθηκε" + (f" από {by})" if by else ")"))
             log(f"👎 {p['sid']}: απορρίφθηκε: {p['title'][:60]}")
             del pending[pid]
 
@@ -720,6 +723,8 @@ def done_pending(tg, state: dict, key: str, status: str) -> None:
     pid = _pid(key)
     p = state.get("_pending", {}).pop(pid, None)
     if p:
+        if p.get("by") and status.startswith("✅"):
+            status += f" (εγκρίθηκε από {p['by']})"
         tg.set_status(p["msg"], p["preview"], status)
 
 

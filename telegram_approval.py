@@ -28,6 +28,7 @@ class Telegram:
         # και τις άμεσες απαντήσεις στον χρήστη τις δίνει ο Worker («live» λειτουργία).
         self.queue_url = (queue_url or "").rstrip("/") or None
         self.live = bool(self.queue_url)
+        self.who: dict[str, str] = {}      # pid → όνομα όποιου πάτησε ✅/❌ (για ομάδες)
 
     def _fetch_updates(self, offset: int, wait_for: int = 0) -> list[dict]:
         if not self.queue_url:
@@ -103,6 +104,7 @@ class Telegram:
                 if self.chat_id and chat == self.chat_id and ":" in cq.get("data", ""):
                     choice, pid = cq["data"].split(":", 1)
                     decisions[pid] = choice
+                    self.who[pid] = (cq.get("from") or {}).get("first_name", "")
                     if self.live:          # την άμεση απάντηση την έδωσε ήδη ο Worker
                         continue
                     try:

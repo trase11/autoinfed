@@ -99,6 +99,6 @@ settings:
   # με κουμπιά ✅/❌ και ανεβαίνει μόνο με ✅. "none" = ανεβαίνει αμέσως.
   approval: telegram
   # Η συνομιλία σου με το bot (τη συμπληρώνει ο Claude από το log μετά το /start)
-  telegram_chat_id: 6721979664    # @chariskoukos
+  telegram_chat_id: -5131620464   # ομάδα διαχειριστών (πριν: 6721979664 @chariskoukos)
   # Διεύθυνση του Cloudflare Worker για άμεσες απαντήσεις (κενό = έλεγχος κάθε ~15')
   telegram_queue_url: https://fancy-mountain-6617.xariskoukos01.workers.dev

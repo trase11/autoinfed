@@ -87,8 +87,12 @@ def _say(tg, text: str) -> None:
 def handle_message(tg, state: dict, msg: dict, srcs_by_id: dict, button_to_sid: dict) -> bool:
     """Επεξεργάζεται ένα δικό σου μήνυμα για σύνθεση. Επιστρέφει True αν το «κατανάλωσε».
     Αν το μήνυμα ολοκληρώνει ανακοίνωση, την αφήνει στο state['_compose_done']."""
-    text = (msg.get("text") or "").strip()
-    c = state.get("_compose")
+    text = re.sub(r"@\w+bot$", "", (msg.get("text") or "").strip(), flags=re.I)   # /start@onoma_bot
+    uid = str((msg.get("from") or {}).get("id", "me"))     # κάθε άτομο έχει δικό του πρόχειρο
+    drafts = state.setdefault("_composes", {})
+    if "_compose" in state:                                 # παλιά μορφή (ένα κοινό πρόχειρο)
+        drafts.setdefault(uid, state.pop("_compose"))
+    c = drafts.get(uid)
 
     if text in ("/start", "/menu", "/help", "βοήθεια"):
         state["_tg_kb"] = None              # ξαναστέλνει τα κουμπιά στο τέλος του γύρου
@@ -96,12 +100,13 @@ def handle_message(tg, state: dict, msg: dict, srcs_by_id: dict, button_to_sid: 
     if text in button_to_sid:
         if c and (c.get("title") or c.get("photos")):
             _say(tg, "🗑 Το προηγούμενο πρόχειρο που δεν είχε ολοκληρωθεί πετάχτηκε.")
-        state["_compose"] = {"sid": button_to_sid[text], "title": None, "caption": None,
-                             "photos": [], "own_cover": False, "changed": True}
+        who = (msg.get("from") or {}).get("first_name", "")
+        drafts[uid] = {"sid": button_to_sid[text], "title": None, "caption": None,
+                       "photos": [], "own_cover": False, "changed": True, "by": who}
         return True
     if text == CANCEL:
         if c:
-            state.pop("_compose", None)
+            drafts.pop(uid, None)
             _say(tg, "🗑 Το πρόχειρο ακυρώθηκε.")
         return True
     if not c:
@@ -118,7 +123,7 @@ def handle_message(tg, state: dict, msg: dict, srcs_by_id: dict, button_to_sid: 
         if c.get("own_cover") and not c["photos"]:
             c["own_cover"] = False
         state.setdefault("_compose_done", []).append(c)
-        state.pop("_compose", None)
+        drafts.pop(uid, None)
         return True
 
     fid = _largest_photo(msg)

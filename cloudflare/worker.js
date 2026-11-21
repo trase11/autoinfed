@@ -59,10 +59,11 @@ async function dispatch(env, updateId, quiet = false) {
   }
 }
 
-async function getStage(env) {
-  return JSON.parse((await env.Q.get("stage")) || '{"active":false}');
+// Κάθε άτομο έχει το δικό του πρόχειρο (για ομάδες με πολλούς διαχειριστές)
+async function getStage(env, uid) {
+  return JSON.parse((await env.Q.get("stage:" + uid)) || '{"active":false}');
 }
-const setStage = (env, s) => env.Q.put("stage", JSON.stringify(s));
+const setStage = (env, uid, s) => env.Q.put("stage:" + uid, JSON.stringify(s), { expirationTtl: 7 * 24 * 3600 });
 
 async function handle(u, env) {
   // 1) πάντα στην ουρά, για το GitHub
@@ -83,67 +84,73 @@ async function handle(u, env) {
   const m = u.message;
   if (!m || String(m.chat?.id) !== String(env.CHAT_ID)) return;
 
-  const text = (m.text || "").trim();
+  const text = (m.text || "").trim().replace(/@\w+bot$/i, "");   // «/start@onoma_bot» σε ομάδες
   const isPhoto = !!(m.photo || (m.document && (m.document.mime_type || "").startsWith("image/")));
-  const st = await getStage(env);
+  const uid = String(m.from?.id || "me");
+  const who = m.from?.first_name ? m.from.first_name + ": " : "";
+  const isGroup = m.chat?.type === "group" || m.chat?.type === "supergroup";
+  const toBot = !!m.reply_to_message?.from?.is_bot;
+  const st = await getStage(env, uid);
+  const sayTo = t => say(env, isGroup ? who + t : t);
 
   if (["/start", "/menu", "/help", "βοήθεια"].includes(text)) {
-    await say(env, "👋 Σου στέλνω τα κουμπιά σε λίγα δευτερόλεπτα…");
+    await sayTo("👋 Σου στέλνω τα κουμπιά σε λίγα δευτερόλεπτα…");
     await dispatch(env, u.update_id);
   } else if (text.startsWith(NEW)) {
-    if (st.active && (st.title || st.photos)) await say(env, "🗑 Το προηγούμενο πρόχειρο πετάχτηκε.");
-    await setStage(env, { active: true, title: false, photos: 0 });
-    await say(env, `📝 Νέο πρόχειρο για ${text.slice(NEW.length)}.\n\nΓράψε τώρα τον τίτλο.`);
+    if (st.active && (st.title || st.photos)) await sayTo("🗑 Το προηγούμενο πρόχειρο πετάχτηκε.");
+    await setStage(env, uid, { active: true, title: false, photos: 0 });
+    await sayTo(`📝 Νέο πρόχειρο για ${text.slice(NEW.length)}.\n\nΓράψε τώρα τον τίτλο.`);
   } else if (text === CANCEL) {
-    await setStage(env, { active: false });
-    await say(env, st.active ? "🗑 Το πρόχειρο ακυρώθηκε." : "Δεν υπάρχει πρόχειρο για ακύρωση.");
+    await setStage(env, uid, { active: false });
+    await sayTo(st.active ? "🗑 Το πρόχειρο ακυρώθηκε." : "Δεν υπάρχει πρόχειρο για ακύρωση.");
   } else if (text === OWN_COVER) {
-    await say(env, st.active ? "✓ Η 1η φωτογραφία θα γίνει το εξώφυλλο."
+    await sayTo(st.active ? "✓ Η 1η φωτογραφία θα γίνει το εξώφυλλο."
                              : "Πάτα πρώτα «📝 Νέα: …» για τον σύλλογο.");
   } else if (text === DONE) {
     if (!st.active) {
-      await say(env, "Δεν υπάρχει πρόχειρο. Πάτα «📝 Νέα: …» για να ξεκινήσεις.");
+      await sayTo("Δεν υπάρχει πρόχειρο. Πάτα «📝 Νέα: …» για να ξεκινήσεις.");
     } else if (!st.title) {
-      await say(env, "⚠️ Λείπει ο τίτλος. Γράψε τον τίτλο και πάτα ξανά «✅ Τέλος».");
+      await sayTo("⚠️ Λείπει ο τίτλος. Γράψε τον τίτλο και πάτα ξανά «✅ Τέλος».");
     } else {
-      await setStage(env, { active: false });
-      await say(env, "⏳ Φτιάχνω την προεπισκόπηση… (περίπου 1 λεπτό)");
+      await setStage(env, uid, { active: false });
+      await sayTo("⏳ Φτιάχνω την προεπισκόπηση… (περίπου 1 λεπτό)");
       await dispatch(env, u.update_id);
     }
-  } else if (m.reply_to_message && text) {
-    await say(env, "✏️ Πήρα την αλλαγή, φτιάχνω νέα προεπισκόπηση… (περίπου 1 λεπτό)");
+  } else if (toBot && text) {
+    await sayTo("✏️ Πήρα την αλλαγή, φτιάχνω νέα προεπισκόπηση… (περίπου 1 λεπτό)");
     await dispatch(env, u.update_id);
   } else if (isPhoto) {
     if (!st.active) {
-      await say(env, "Πάτα πρώτα «📝 Νέα: …» για τον σύλλογο και μετά στείλε φωτογραφίες.");
+      if (!isGroup) await sayTo("Πάτα πρώτα «📝 Νέα: …» για τον σύλλογο και μετά στείλε φωτογραφίες.");
       return;
     }
     st.photos = (st.photos || 0) + 1;
     if (m.caption && !st.title) st.title = true;
-    await setStage(env, st);
+    await setStage(env, uid, st);
     if (st.photos > MAX_SLIDES) {
-      await say(env, `⚠️ Το καρουσέλ χωράει έως ${MAX_SLIDES} εικόνες· οι επιπλέον αγνοούνται.`);
+      await sayTo(`⚠️ Το καρουσέλ χωράει έως ${MAX_SLIDES} εικόνες· οι επιπλέον αγνοούνται.`);
     } else if (m.media_group_id) {
       const k = "mg:" + m.media_group_id;           // μία απάντηση ανά άλμπουμ
       if (!(await env.Q.get(k))) {
         await env.Q.put(k, "1", { expirationTtl: 3600 });
-        await say(env, "📷 Πήρα τις φωτογραφίες (με αυτή τη σειρά στο καρουσέλ).\n" +
+        await sayTo("📷 Πήρα τις φωτογραφίες (με αυτή τη σειρά στο καρουσέλ).\n" +
                        "Στείλε κι άλλες, γράψε λεζάντα ή πάτα «✅ Τέλος».");
       }
     } else {
-      await say(env, `📷 Φωτογραφία ${st.photos}. Στείλε κι άλλες, γράψε λεζάντα ή πάτα «✅ Τέλος».`);
+      await sayTo(`📷 Φωτογραφία ${st.photos}. Στείλε κι άλλες, γράψε λεζάντα ή πάτα «✅ Τέλος».`);
     }
   } else if (text) {
     if (!st.active) {
-      await say(env, "Για νέα ανακοίνωση πάτα «📝 Νέα: …».\n" +
+      if (isGroup) return;                     // κανονική κουβέντα στην ομάδα: σιωπή
+      await sayTo("Για νέα ανακοίνωση πάτα «📝 Νέα: …».\n" +
                      "Για αλλαγή σε προεπισκόπηση κάνε «Απάντηση» (reply) στο μήνυμα με την εικόνα.");
     } else if (!st.title) {
       st.title = true;
-      await setStage(env, st);
-      await say(env, `✓ Τίτλος: «${text}»\n\nΤώρα στείλε φωτογραφίες (με τη σειρά του καρουσέλ) ` +
+      await setStage(env, uid, st);
+      await sayTo(`✓ Τίτλος: «${text}»\n\nΤώρα στείλε φωτογραφίες (με τη σειρά του καρουσέλ) ` +
                      "και/ή γράψε τη λεζάντα. Στο τέλος πάτα «✅ Τέλος».");
     } else {
-      await say(env, "✓ Λεζάντα αποθηκεύτηκε. Πάτα «✅ Τέλος» όταν είσαι έτοιμος.");
+      await sayTo("✓ Λεζάντα αποθηκεύτηκε. Πάτα «✅ Τέλος» όταν είσαι έτοιμος.");
     }
   }
 }
