@@ -1,5 +1,18 @@
 {
- "_pending": {},
+ "_pending": {
+  "b2e5f8e7c4c8": {
+   "date": "2026-11-20T09:05:16+02:00",
+   "excerpt": "",
+   "img": "images/mie/b2e5f8e7c4c8.jpg",
+   "key": "https://mie.uth.gr/?p=33046",
+   "link": "https://mie.uth.gr/?p=33046",
+   "msg": 4,
+   "preview": "🏛 Μηχανολόγων Μηχανικών ΠΘ\n\n📢 Πρόγραμμα Κατατακτήριων Εξετάσεων Ακ. έτος 2026-2027\n\n📅 20/11/2026\n🔗 https://mie.uth.gr/?p=33046\n\n#uth #mie #ΠανεπιστήμιοΘεσσαλίας",
+   "sid": "mie",
+   "story": "images/mie/b2e5f8e7c4c8_story.jpg",
+   "title": "Πρόγραμμα Κατατακτήριων Εξετάσεων Ακ. έτος 2026-2027"
+  }
+ },
  "_tg_hello": true,
  "_tg_offset": 811151683,
  "mie": {
@@ -12,7 +25,8 @@
    "https://mie.uth.gr/?p=32840": "initial",
    "https://mie.uth.gr/?p=32871": "initial",
    "https://mie.uth.gr/?p=32903": "initial",
-   "https://mie.uth.gr/?p=32927": "initial"
+   "https://mie.uth.gr/?p=32927": "initial",
+   "https://mie.uth.gr/?p=33046": "pending"
   }
  }
 }
