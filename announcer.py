@@ -163,6 +163,56 @@ def fetch_html_entries(src: dict, html_file: str | None = None) -> list:
     return entries
 
 
+ECLASS_RSS = "https://eclass.uth.gr/modules/announcements/rss.php?c={code}"
+
+
+def fetch_eclass(src: dict, state: dict, settings: dict) -> list:
+    """Ανακοινώσεις μαθημάτων eClass για τον λογαριασμό του τμήματος.
+    - ελέγχονται κάθε `eclass_every_minutes` (προεπιλογή 30') για να μη φορτώνεται το eClass
+    - την 1η φορά για κάθε μάθημα οι παλιές ανακοινώσεις σημειώνονται ως γνωστές
+    - η ετικέτα στην εικόνα είναι το όνομα του μαθήματος"""
+    sid = src["id"]
+    every = int(settings.get("eclass_every_minutes", 30))
+    last = state.setdefault("_eclass_last", {})
+    now = time.time()
+    if now - last.get(sid, 0) < every * 60 - 30:
+        return []
+    last[sid] = now
+    s = state[sid]
+    known = s.setdefault("eclass_feeds", [])
+    out = []
+    for course in src["eclass"]:
+        code, name = course["code"], course.get("name", course["code"])
+        url = ECLASS_RSS.format(code=code)
+        try:
+            r = requests.get(url, headers={"User-Agent": UA}, timeout=30)
+            parsed = feedparser.parse(r.content)
+            if r.status_code != 200 or (not parsed.entries and not parsed.feed.get("title")):
+                raise RuntimeError(f"HTTP {r.status_code}, δεν είναι RSS (μάλλον θέλει σύνδεση)")
+        except Exception as e:
+            log(f"⚠️  {sid}: eClass {code} ({name}): {e}")
+            continue
+        entries = []
+        for e in parsed.entries:
+            e["tags"] = [{"term": name}]          # ετικέτα = όνομα μαθήματος
+            if not (e.get("id") or e.get("link")):
+                continue
+            e["id"] = "eclass:" + (e.get("id") or e.get("link"))
+            # το μάθημα φαίνεται και στη λεζάντα/περίληψη, όχι μόνο στην ετικέτα της εικόνας
+            e["summary"] = f"Μάθημα: {name}. " + (e.get("summary") or "")
+            entries.append(e)
+        if code not in known:                     # πρώτη φορά: τα παλιά = γνωστά
+            for e in entries:
+                s["seen"].setdefault(e["id"], "initial")
+            known.append(code)
+            log(f"🆕 {sid}: eClass {code} ({name}): {len(entries)} παλιές ανακοινώσεις σημειώθηκαν ως γνωστές")
+            continue
+        out += entries
+    if out or src["eclass"]:
+        log(f"📚 {sid}: eClass, {len(src['eclass'])} μαθήματα ελέγχθηκαν")
+    return out
+
+
 def fetch_entries(src: dict, feed_file: str | None = None) -> list:
     if src.get("type") == "html":
         return fetch_html_entries(src, feed_file)
@@ -733,6 +783,8 @@ def main() -> int:
             continue
 
         first_time = sid not in state
+        if src.get("eclass") and not args.feed_file and not first_time:
+            entries += fetch_eclass(src, state, cfg.get("settings", {}))
         s = state.setdefault(sid, {"seen": {}, "attempts": {}})
         new = [e for e in entries if item_key(e) not in s["seen"]]
 
