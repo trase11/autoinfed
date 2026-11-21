@@ -410,18 +410,40 @@ def ig_call(method, path, token, **params):
 
 
 def ig_account_id(token: str, given: str | None) -> str:
+    """Βρίσκει τον λογαριασμό Instagram ενός token, δοκιμάζοντας όλους τους τρόπους
+    που δίνει η Meta (Instagram login, Unified login/system user, σελίδα Facebook)."""
     if given:
         return str(given)
-    if token.startswith("IGAA"):
-        return ig_call("GET", "me", token, fields="user_id")["user_id"]
-    try:
-        accts = ig_call("GET", "me/assigned_instagram_accounts", token, fields="id,username").get("data", [])
-        if len(accts) == 1:
-            return accts[0]["id"]
-    except InstagramError:
-        pass
-    raise InstagramError("Δεν βρέθηκε αυτόματα ο λογαριασμός Instagram αυτού του token. "
-                         "Βάλε στο IG_TOKENS τη μορφή {\"token\": \"...\", \"ig_id\": \"...\"}")
+    errors = []
+    tries = [
+        ("ig:me", lambda: requests.get(f"{GRAPH}/me", params={"fields": "user_id,username",
+                                        "access_token": token}, timeout=30).json(),
+         lambda d: d.get("user_id")),
+        ("fb:assigned_instagram_accounts", lambda: requests.get(f"{GRAPH_FB}/me/assigned_instagram_accounts",
+                                        params={"fields": "id,username", "access_token": token}, timeout=30).json(),
+         lambda d: (d.get("data") or [{}])[0].get("id") if len(d.get("data") or []) == 1 else None),
+        ("fb:accounts", lambda: requests.get(f"{GRAPH_FB}/me/accounts",
+                                        params={"fields": "instagram_business_account", "access_token": token}, timeout=30).json(),
+         lambda d: next((x["instagram_business_account"]["id"] for x in d.get("data") or []
+                         if x.get("instagram_business_account")), None)),
+        ("fb:me", lambda: requests.get(f"{GRAPH_FB}/me", params={"fields": "id,name",
+                                        "access_token": token}, timeout=30).json(),
+         lambda d: None),   # μόνο για διάγνωση: σε ποιον ανήκει το token
+    ]
+    for name, call, pick in tries:
+        try:
+            d = call()
+        except Exception as e:
+            errors.append(f"{name}: {e}")
+            continue
+        if "error" in d:
+            errors.append(f"{name}: {d['error'].get('message', '')[:120]}")
+            continue
+        got = pick(d)
+        if got:
+            return str(got)
+        errors.append(f"{name}: {str(d)[:120]}")
+    raise InstagramError("Δεν βρέθηκε ο λογαριασμός Instagram του token. Απαντήσεις Meta → " + " | ".join(errors))
 
 
 def ig_recent_captions(cred, limit: int = 30) -> str:
@@ -783,6 +805,15 @@ def main() -> int:
             return 0
         tg = Telegram(tg_token, st.get("telegram_chat_id"), st.get("telegram_queue_url"))
 
+    if os.environ.get("CHECK_TOKENS") == "1":
+        for sid, cred in parse_tokens(os.environ.get("IG_TOKENS") or "", [x["id"] for x in cfg["sources"]]).items():
+            tok = cred if isinstance(cred, str) else cred["token"]
+            kind = f"{tok[:4]}… ({len(tok)} χαρακτήρες)"
+            try:
+                log(f"🔑 {sid}: token {kind} → λογαριασμός Instagram {ig_account_id(tok, None if isinstance(cred, str) else cred.get('ig_id'))}")
+            except Exception as e:
+                log(f"🔑 {sid}: token {kind} → ❌ {e}")
+        return 0
     tokens = parse_tokens(os.environ.get("IG_TOKENS") or "", [s["id"] for s in cfg["sources"]])
     state = load_state()
     jobs = []  # (src, key, title, date, excerpt, link, image_path, story_path)

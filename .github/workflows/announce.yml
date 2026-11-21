@@ -12,6 +12,10 @@ on:
         description: "update_id του Telegram που ξεκίνησε την εκτέλεση (από τον Worker)"
         required: false
         default: ""
+      check_tokens:
+        description: "1 = μόνο έλεγχος των tokens του Instagram (διάγνωση)"
+        required: false
+        default: ""
 
 permissions:
   contents: write             # για να αποθηκεύει εικόνες και state στο repo
@@ -50,6 +54,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           ECLASS_RSS: ${{ secrets.ECLASS_RSS }}
           WAIT_FOR: ${{ github.event.inputs.wait_for }}
+          CHECK_TOKENS: ${{ github.event.inputs.check_tokens }}
         run: python announcer.py
 
       - name: Αποθήκευση state
