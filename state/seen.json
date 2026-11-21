@@ -11,7 +11,62 @@
  "_eclass_last": {
   "mie": 1795291250.675848
  },
- "_pending": {},
+ "_pending": {
+  "b02f93e48e0f": {
+   "caption": "👋 Καλώς ήρθατε!\n\nΕδώ θα βρίσκετε όλες τις ανακοινώσεις του Τμήματος Μηχανολόγων Μηχανικών του Πανεπιστημίου Θεσσαλίας, σε ένα σημείο και χωρίς να ψάχνετε στο site ⚙️\n\nℹ️ Ανεπίσημη σελίδα ενημέρωσης, από φοιτητές για φοιτητές. Για την επίσημη ενημέρωση ισχύει πάντα το mie.uth.gr.\n\n#uth #mie #ΠανεπιστήμιοΘεσσαλίας #μηχανολόγοι",
+   "category": "",
+   "date": "2026-11-21T22:30:00+02:00",
+   "excerpt": "",
+   "img": "images/mie/intro/1_kalos_irthate.jpg",
+   "key": "custom:intro_1_kalos_irthate",
+   "kind": "custom",
+   "link": "",
+   "own_cover": false,
+   "resend": true,
+   "sid": "mie",
+   "slides": [
+    "images/mie/intro/1_kalos_irthate.jpg"
+   ],
+   "story": null,
+   "title": "Καλώς ήρθατε!"
+  },
+  "da6b7bf68086": {
+   "caption": "🔔 Μη χάνεις καμία ανακοίνωση!\n\n1️⃣ Πάτα «Ακολούθηση»\n2️⃣ Πάτα το καμπανάκι 🔔 πάνω δεξιά στο προφίλ\n3️⃣ Ενεργοποίησε ειδοποιήσεις για δημοσιεύσεις και stories\n\nΈτσι θα μαθαίνεις κάθε νέα ανακοίνωση του τμήματος αμέσως 📲\n\n#uth #mie #ΠανεπιστήμιοΘεσσαλίας #μηχανολόγοι",
+   "category": "",
+   "date": "2026-11-21T22:30:00+02:00",
+   "excerpt": "",
+   "img": "images/mie/intro/3_eidopoiiseis.jpg",
+   "key": "custom:intro_3_eidopoiiseis",
+   "kind": "custom",
+   "link": "",
+   "own_cover": false,
+   "resend": true,
+   "sid": "mie",
+   "slides": [
+    "images/mie/intro/3_eidopoiiseis.jpg"
+   ],
+   "story": null,
+   "title": "Μη χάνεις καμία ανακοίνωση"
+  },
+  "e03bfa4e325f": {
+   "caption": "📌 Τι θα βρίσκετε εδώ;\n\n📢 Τις ανακοινώσεις του mie.uth.gr, λίγα λεπτά αφότου δημοσιευτούν\n📝 Εξεταστικές, δηλώσεις μαθημάτων και προθεσμίες\n🎓 Ορκωμοσίες, εκδηλώσεις, ημέρες καριέρας\n📄 Αποφάσεις και σημαντικές ενημερώσεις\n\nΚάθε post έχει στη λεζάντα το link της πλήρους ανακοίνωσης 🔗\n\n#uth #mie #ΠανεπιστήμιοΘεσσαλίας #μηχανολόγοι",
+   "category": "",
+   "date": "2026-11-21T22:30:00+02:00",
+   "excerpt": "",
+   "img": "images/mie/intro/2_ti_tha_vriskete.jpg",
+   "key": "custom:intro_2_ti_tha_vriskete",
+   "kind": "custom",
+   "link": "",
+   "own_cover": false,
+   "resend": true,
+   "sid": "mie",
+   "slides": [
+    "images/mie/intro/2_ti_tha_vriskete.jpg"
+   ],
+   "story": null,
+   "title": "Τι θα βρίσκετε εδώ"
+  }
+ },
  "_tg_hello": "-5131620464",
  "_tg_kb": "mie",
  "_tg_offset": 811151733,

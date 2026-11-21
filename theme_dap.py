@@ -89,7 +89,8 @@ def _paste(img, path: Path, box_w: int, xy, anchor="lt"):
 
 
 def make_image(src: dict, title: str, date: datetime, excerpt: str, category: str, out: Path,
-               story: bool = False, footer: tuple[str, str] | None = None) -> Path:
+               story: bool = False, footer: tuple[str, str] | None = None,
+               excerpt_size: int | None = None) -> Path:
     """footer=(μικρό κείμενο, μεγάλο γαλάζιο κείμενο) αντί για «Ολόκληρη η ανακοίνωση / site»."""
     H = 1920 if story else 1350
     top = 220 if story else 0           # στο story το Instagram καλύπτει πάνω/κάτω
@@ -149,7 +150,7 @@ def make_image(src: dict, title: str, date: datetime, excerpt: str, category: st
     y += 26
     d.rounded_rectangle([PAD, y, PAD + 120, y + 8], radius=4, fill=CYAN)
     y += 40
-    ef = ImageFont.truetype(REG, 38 if story else 35)
+    ef = ImageFont.truetype(REG, excerpt_size or (38 if story else 35))
     eh = int(ef.size * 1.38)
     room = (footer_y - 30 - y) // eh
     if excerpt and room >= 1:
