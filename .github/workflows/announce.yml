@@ -26,6 +26,11 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Πάντα η πιο πρόσφατη εκδοχή του main, όχι αυτή της στιγμής που ζητήθηκε η
+          # εκτέλεση: αλλιώς μια εκτέλεση που περίμενε στην ουρά βλέπει παλιό state
+          # και ξαναδημοσιεύει ό,τι ανέβασε η προηγούμενη.
+          ref: main
 
       - uses: actions/setup-python@v5
         with:

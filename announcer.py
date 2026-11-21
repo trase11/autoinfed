@@ -637,6 +637,14 @@ def regen_images(src: dict, p: dict) -> None:
     push_images(paths)
 
 
+def recent_folded(recent: dict, sid: str) -> str:
+    """Οι πρόσφατες λεζάντες «διπλωμένες» (χωρίς κενά/τόνους), για σύγκριση με τις δικές σου."""
+    key = f"_folded_{sid}"
+    if key not in recent:
+        recent[key] = _fold(recent.get(sid, ""))
+    return recent[key]
+
+
 def done_pending(tg, state: dict, key: str, status: str) -> None:
     """Κλείνει μια εκκρεμότητα έγκρισης και ενημερώνει το μήνυμα στο Telegram."""
     if not tg:
@@ -792,7 +800,9 @@ def main() -> int:
         # (π.χ. χάθηκε το state). Το σημειώνουμε ως γνωστό και δεν το ξανανεβάζουμε.
         if sid not in recent:
             recent[sid] = ig_recent_captions(token)
-        if link and link in recent[sid]:
+        custom = state.get("_pending", {}).get(_pid(key), {}).get("caption")
+        sig = _fold(custom)[:80] if custom else ""
+        if (link and link in recent[sid]) or (sig and sig in recent_folded(recent, sid)):
             s["seen"][key] = "already-on-instagram"
             s["attempts"].pop(key, None)
             log(f"↩️  {sid}: υπάρχει ήδη στο Instagram, παράλειψη: {title[:60]}")
