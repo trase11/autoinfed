@@ -440,6 +440,10 @@ def approval_round(tg: Telegram, cfg: dict, state: dict, new_jobs: list):
         return None
     if strangers:
         log(f"ℹ️  Μηνύματα από άλλους χρήστες στο bot (αγνοούνται): {', '.join(strangers)}")
+    if not state.get("_tg_hello"):
+        tg.notify("✅ Το bot συνδέθηκε!\n\nΚάθε νέα ανακοίνωση θα σου έρχεται εδώ με κουμπιά "
+                  "✅ / ❌ και θα ανεβαίνει στο Instagram μόνο αν πατήσεις ✅.")
+        state["_tg_hello"] = True
 
     for pid, choice in decisions.items():
         p = pending.get(pid)

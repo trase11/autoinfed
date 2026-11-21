@@ -90,4 +90,4 @@ settings:
   # με κουμπιά ✅/❌ και ανεβαίνει μόνο με ✅. "none" = ανεβαίνει αμέσως.
   approval: telegram
   # Η συνομιλία σου με το bot (τη συμπληρώνει ο Claude από το log μετά το /start)
-  telegram_chat_id:
+  telegram_chat_id: 6721979664    # @chariskoukos
