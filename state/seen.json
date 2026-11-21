@@ -6,12 +6,16 @@
    "custom:fdc0337e76fb": "rejected"
   }
  },
+ "_eclass_last": {
+  "mie": 1795274793.787951
+ },
  "_pending": {},
  "_tg_hello": true,
  "_tg_kb": "mie",
  "_tg_offset": 811151713,
  "mie": {
   "attempts": {},
+  "eclass_feeds": [],
   "seen": {
    "https://mie.uth.gr/?p=32514": "initial",
    "https://mie.uth.gr/?p=32612": "initial",
