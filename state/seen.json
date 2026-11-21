@@ -17,36 +17,10 @@
  "_eclass_last": {
   "mie": 1795300251.4920347
  },
- "_pending": {
-  "7ea3f0d0bf29": {
-   "caption": "Δοκιμή: εκδρομή φοιτητικου συλλόγου στις εγκαταστάσεις της ΑΓΕΤ Ηρακλής.\n\n#uth #mie #ΠανεπιστήμιοΘεσσαλίας",
-   "category": "",
-   "date": "2026-11-22T00:30:54.928971+02:00",
-   "excerpt": "",
-   "img": "images/mie/custom_d032da54d6a2/s00_v0.jpg",
-   "key": "custom:d032da54d6a2",
-   "kind": "custom",
-   "link": "",
-   "msg": 121,
-   "own_cover": false,
-   "preview": "🧪 ΔΟΚΙΜΗ (δεν θα ανέβει)\n🏛 Μηχανολόγων Μηχανικών ΠΘ\n\nΔοκιμή: εκδρομή φοιτητικου συλλόγου στις εγκαταστάσεις της ΑΓΕΤ Ηρακλής.\n\n#uth #mie #ΠανεπιστήμιοΘεσσαλίας\n\n📱 + story\n\n✏️ Reply εδώ για αλλαγή (κείμενο = λεζάντα, «τίτλος: …», «περίληψη: …» · στο 📸 «πρόταση: …»)",
-   "raws": [
-    "images/mie/custom_d032da54d6a2/raw_0.jpg"
-   ],
-   "sid": "mie",
-   "slides": [
-    "images/mie/custom_d032da54d6a2/s00_v0.jpg"
-   ],
-   "story": "images/mie/custom_d032da54d6a2/story_v0.jpg",
-   "style": "photo",
-   "test": true,
-   "title": "εκδρομή φοιτητικου συλλόγου στις εγκαταστάσεις της ΑΓΕΤ Ηρακλής.",
-   "v": 0
-  }
- },
+ "_pending": {},
  "_tg_hello": "-5131620464",
  "_tg_kb": "mie",
- "_tg_offset": 811151745,
+ "_tg_offset": 811151746,
  "mie": {
   "attempts": {},
   "eclass_feeds": [],
