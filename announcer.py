@@ -380,6 +380,11 @@ def main() -> int:
         sid = src["id"]
         if not src.get("enabled", True) or (args.only and args.only != sid):
             continue
+        if not args.dry_run and sid not in tokens:
+            # Χωρίς token δεν κάνουμε τίποτα, ούτε καν την «πρώτη εκτέλεση»:
+            # αυτή θα γίνει όταν προστεθεί το token του.
+            log(f"·  {sid}: δεν υπάρχει ακόμα token στο IG_TOKENS, παράλειψη")
+            continue
         try:
             entries = fetch_entries(src, args.feed_file)
         except Exception as e:  # ένα site που έπεσε δεν σταματάει τους υπόλοιπους
