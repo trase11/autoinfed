@@ -327,6 +327,19 @@ def ig_account_id(token: str, given: str | None) -> str:
                          "Βάλε στο IG_TOKENS τη μορφή {\"token\": \"...\", \"ig_id\": \"...\"}")
 
 
+def ig_recent_captions(cred, limit: int = 30) -> str:
+    """Οι λεζάντες των τελευταίων posts του λογαριασμού, για έλεγχο διπλών.
+    Αν αποτύχει, επιστρέφει κενό ώστε να μη μπλοκάρει τη δημοσίευση."""
+    token, given_id = (cred, None) if isinstance(cred, str) else (cred["token"], cred.get("ig_id"))
+    try:
+        uid = ig_account_id(token, given_id)
+        data = ig_call("GET", f"{uid}/media", token, fields="caption", limit=limit).get("data", [])
+        return "\n".join(m.get("caption") or "" for m in data)
+    except Exception as e:
+        log(f"   (δεν έγινε έλεγχος διπλών: {e})")
+        return ""
+
+
 def ig_publish(cred, image_url: str, caption: str = "", story: bool = False) -> str:
     token, given_id = (cred, None) if isinstance(cred, str) else (cred["token"], cred.get("ig_id"))
     uid = ig_account_id(token, given_id)
@@ -478,6 +491,7 @@ def main() -> int:
     if jobs:
         push_images([p for j in jobs for p in j[-2:] if p])
 
+    recent: dict[str, str] = {}
     for src, key, title, date, excerpt, link, img, story_img in jobs:
         sid = src["id"]
         s = state[sid]
@@ -485,6 +499,15 @@ def main() -> int:
         if not token:
             log(f"⚠️  {sid}: λείπει το token στο IG_TOKENS, παραλείπεται")
             had_error = True
+            continue
+        # Δικλίδα: αν το link υπάρχει ήδη σε λεζάντα του λογαριασμού, έχει ανέβει ήδη
+        # (π.χ. χάθηκε το state). Το σημειώνουμε ως γνωστό και δεν το ξανανεβάζουμε.
+        if sid not in recent:
+            recent[sid] = ig_recent_captions(token)
+        if link and link in recent[sid]:
+            s["seen"][key] = "already-on-instagram"
+            s["attempts"].pop(key, None)
+            log(f"↩️  {sid}: υπάρχει ήδη στο Instagram, παράλειψη: {title[:60]}")
             continue
         try:
             media_id = ig_publish(token, raw_url(img), make_caption(src, title, date, excerpt, link))
