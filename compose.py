@@ -217,6 +217,9 @@ def build(tg, c: dict, src: dict, stories: bool) -> dict:
          "slides": [str((folder / "s00.jpg").relative_to(ROOT))], "v": -1}
     if not stories:
         p["story"] = None
+    if re.match(r"\s*(δοκιμ|🧪|test)", c["title"], re.I):    # «Δοκιμή …»: δεν ανεβαίνει ποτέ
+        p["test"] = True
+        p["title"] = re.sub(r"^\s*(δοκιμ\S*|🧪|test)\s*[:\-–]?\s*", "", c["title"], flags=re.I) or c["title"]
     # με φωτογραφίες: εξ ορισμού το στυλ «φωτογραφία συλλόγου»· αλλάζει από τα κουμπιά
     style = "own" if c.get("own_cover") else ("photo" if raw else "blue")
     render(src, p, style, stories)
