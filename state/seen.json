@@ -1,8 +1,15 @@
 {
+ "_compose": {
+  "caption": null,
+  "own_cover": false,
+  "photos": [],
+  "sid": "mie",
+  "title": null
+ },
  "_pending": {},
  "_tg_hello": true,
  "_tg_kb": "mie",
- "_tg_offset": 811151689,
+ "_tg_offset": 811151695,
  "mie": {
   "attempts": {},
   "seen": {
