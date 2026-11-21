@@ -1,15 +1,30 @@
 {
- "_compose": {
-  "caption": null,
-  "own_cover": false,
-  "photos": [],
-  "sid": "mie",
-  "title": null
+ "_pending": {
+  "107091fc5832": {
+   "caption": "Παρθηκε απόφαση στο δς\n\n#uth #mie #ΠανεπιστήμιοΘεσσαλίας",
+   "category": "",
+   "date": "2026-11-21T16:32:34.316616+02:00",
+   "excerpt": "",
+   "img": "images/mie/custom_fdc0337e76fb/s00.jpg",
+   "key": "custom:fdc0337e76fb",
+   "kind": "custom",
+   "link": "",
+   "msg": 31,
+   "own_cover": false,
+   "preview": "🏛 Μηχανολόγων Μηχανικών ΠΘ\n\nΠαρθηκε απόφαση στο δς\n\n#uth #mie #ΠανεπιστήμιοΘεσσαλίας\n\n🖼 Καρουσέλ με 3 εικόνες\n\n📱 + story\n\n✏️ Reply εδώ για αλλαγή (κείμενο = λεζάντα, «τίτλος: …», «περίληψη: …»)",
+   "sid": "mie",
+   "slides": [
+    "images/mie/custom_fdc0337e76fb/s00.jpg",
+    "images/mie/custom_fdc0337e76fb/s01.jpg",
+    "images/mie/custom_fdc0337e76fb/s02.jpg"
+   ],
+   "story": "images/mie/custom_fdc0337e76fb/story.jpg",
+   "title": "Απόφαση Δ.Σ. Μηχανολόγων μηχανικών Π.Θ."
+  }
  },
- "_pending": {},
  "_tg_hello": true,
  "_tg_kb": "mie",
- "_tg_offset": 811151695,
+ "_tg_offset": 811151700,
  "mie": {
   "attempts": {},
   "seen": {
