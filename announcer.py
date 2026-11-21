@@ -29,6 +29,7 @@ import yaml
 from PIL import Image, ImageDraw, ImageFont
 
 import theme_dap
+from telegram_approval import Telegram, TelegramError
 
 ROOT = Path(__file__).resolve().parent
 STATE_FILE = ROOT / "state" / "seen.json"
@@ -405,6 +406,88 @@ def raw_url(path: Path) -> str:
 # --------------------------------------------------------------------------- #
 # Κύρια ροή
 # --------------------------------------------------------------------------- #
+# --------------------------------------------------------------------------- #
+# Έγκριση μέσω Telegram
+# --------------------------------------------------------------------------- #
+def _pid(key: str) -> str:
+    return hashlib.sha1(key.encode()).hexdigest()[:12]
+
+
+def approval_round(tg: Telegram, cfg: dict, state: dict, new_jobs: list):
+    """1) διαβάζει τα ✅/❌ που πατήθηκαν, 2) στέλνει προεπισκόπηση για τα νέα,
+    3) επιστρέφει όσα έχουν εγκριθεί για δημοσίευση."""
+    pending = state.setdefault("_pending", {})
+    offset = state.get("_tg_offset", 0)
+    try:
+        decisions, offset, strangers = tg.read_updates(offset)
+        state["_tg_offset"] = offset
+    except TelegramError as e:
+        log(f"⚠️  Telegram: {e}")
+        decisions, strangers = {}, []
+
+    if not tg.chat_id:
+        log("ℹ️  Δεν έχει οριστεί telegram_chat_id στο config. Στείλε /start στο bot. "
+            "Συνομιλίες που έγραψαν: " + (", ".join(strangers) or "καμία ακόμα"))
+        # κρατάμε τα νέα ως «άγνωστα» ώστε να ξαναβρεθούν όταν ρυθμιστεί η συνομιλία
+        return None
+    if strangers:
+        log(f"ℹ️  Μηνύματα από άλλους χρήστες στο bot (αγνοούνται): {', '.join(strangers)}")
+
+    for pid, choice in decisions.items():
+        p = pending.get(pid)
+        if not p or p.get("approved"):
+            continue
+        if choice == "y":
+            p["approved"] = True
+            log(f"👍 {p['sid']}: εγκρίθηκε: {p['title'][:60]}")
+        else:
+            state[p["sid"]]["seen"][p["key"]] = "rejected"
+            tg.set_status(p["msg"], p["preview"], "❌ Δεν ανέβηκε (απορρίφθηκε)")
+            log(f"👎 {p['sid']}: απορρίφθηκε: {p['title'][:60]}")
+            del pending[pid]
+
+    # νέες ανακοινώσεις → προεπισκόπηση στο Telegram
+    for src, key, title, date, excerpt, link, img, story_img in new_jobs:
+        pid = _pid(key)
+        preview = (f"🏛 {src['name']}\n\n" + make_caption(src, title, date, excerpt, link))[:900]
+        try:
+            msg = tg.send_preview(img, preview + ("\n\n📱 + story" if story_img else ""), pid)
+        except Exception as e:
+            log(f"⚠️  {src['id']}: δεν στάλθηκε προεπισκόπηση στο Telegram ({e}), θα ξαναδοκιμάσει")
+            continue
+        state[src["id"]]["seen"][key] = "pending"
+        pending[pid] = {
+            "sid": src["id"], "key": key, "title": title, "date": date.isoformat(),
+            "excerpt": excerpt, "link": link, "msg": msg, "preview": preview,
+            "img": str(img.relative_to(ROOT)),
+            "story": str(story_img.relative_to(ROOT)) if story_img else None,
+        }
+        log(f"📨 {src['id']}: στάλθηκε για έγκριση: {title[:60]}")
+
+    # όσα έχουν εγκριθεί (τώρα ή σε προηγούμενο έλεγχο και δεν ανέβηκαν ακόμα)
+    srcs = {x["id"]: x for x in cfg["sources"]}
+    ready = []
+    for pid, p in pending.items():
+        if p.get("approved") and p["sid"] in srcs:
+            ready.append((srcs[p["sid"]], p["key"], p["title"], datetime.fromisoformat(p["date"]),
+                          p["excerpt"], p["link"], ROOT / p["img"],
+                          ROOT / p["story"] if p.get("story") else None))
+    waiting = sum(1 for p in pending.values() if not p.get("approved"))
+    if waiting:
+        log(f"⏳ {waiting} ανακοινώσεις περιμένουν την έγκρισή σου στο Telegram")
+    return ready
+
+
+def done_pending(tg, state: dict, key: str, status: str) -> None:
+    """Κλείνει μια εκκρεμότητα έγκρισης και ενημερώνει το μήνυμα στο Telegram."""
+    if not tg:
+        return
+    pid = _pid(key)
+    p = state.get("_pending", {}).pop(pid, None)
+    if p:
+        tg.set_status(p["msg"], p["preview"], status)
+
+
 def parse_tokens(raw: str, ids: list[str]) -> dict:
     """Διαβάζει το IG_TOKENS. Δέχεται:
        {"mie": "EAA..."}            (κανονική μορφή)
@@ -448,6 +531,17 @@ def main() -> int:
     max_attempts = st.get("max_attempts", 3)
     stories_default = st.get("stories", True)
     theme_default = st.get("theme", "classic")
+    approval = st.get("approval", "none")          # "telegram" = έγκριση πριν ανέβει
+    tg = None
+    if approval == "telegram" and not args.dry_run:
+        tg_token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+        if not tg_token:
+            # Χωρίς bot δεν ανεβαίνει τίποτα (θέλουμε έγκριση) και δεν σημειώνεται τίποτα
+            # ως γνωστό: όταν μπει το token, οι ανακοινώσεις θα σταλούν για έγκριση.
+            log("⏸  Είναι ενεργή η έγκριση μέσω Telegram αλλά λείπει το secret "
+                "TELEGRAM_BOT_TOKEN. Δεν γίνεται τίποτα μέχρι να μπει.")
+            return 0
+        tg = Telegram(tg_token, st.get("telegram_chat_id"))
 
     tokens = parse_tokens(os.environ.get("IG_TOKENS") or "", [s["id"] for s in cfg["sources"]])
     state = load_state()
@@ -518,6 +612,12 @@ def main() -> int:
     if jobs:
         push_images([p for j in jobs for p in j[-2:] if p])
 
+    if tg:
+        jobs = approval_round(tg, cfg, state, jobs)
+        if jobs is None:          # δεν έχει οριστεί ακόμα σε ποια συνομιλία στέλνουμε
+            save_state(state)
+            return 1
+
     recent: dict[str, str] = {}
     for src, key, title, date, excerpt, link, img, story_img in jobs:
         sid = src["id"]
@@ -535,12 +635,14 @@ def main() -> int:
             s["seen"][key] = "already-on-instagram"
             s["attempts"].pop(key, None)
             log(f"↩️  {sid}: υπάρχει ήδη στο Instagram, παράλειψη: {title[:60]}")
+            done_pending(tg, state, key, "↩️ Υπήρχε ήδη στο Instagram")
             continue
         try:
             media_id = ig_publish(token, raw_url(img), make_caption(src, title, date, excerpt, link))
             s["seen"][key] = datetime.now(ATHENS).isoformat(timespec="minutes")
             s["attempts"].pop(key, None)
             log(f"✅ {sid}: δημοσιεύτηκε ({media_id})")
+            done_pending(tg, state, key, "✅ Ανέβηκε στο Instagram")
             if story_img:
                 # Το story είναι «μπόνους»: αν αποτύχει, το post έχει ήδη ανέβει
                 # και δεν το ξαναδοκιμάζουμε (αλλιώς θα διπλασιαζόταν το post).
@@ -556,6 +658,7 @@ def main() -> int:
             if n >= max_attempts:
                 s["seen"][key] = "failed"
                 s["attempts"].pop(key, None)
+                done_pending(tg, state, key, f"⚠️ Απέτυχε να ανέβει: {e}")
             had_error = True
         time.sleep(5)
 

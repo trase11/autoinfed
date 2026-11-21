@@ -37,6 +37,7 @@ jobs:
       - name: Έλεγχος & δημοσίευση
         env:
           IG_TOKENS: ${{ secrets.IG_TOKENS }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         run: python announcer.py
 
       - name: Αποθήκευση state
