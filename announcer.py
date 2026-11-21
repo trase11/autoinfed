@@ -28,6 +28,8 @@ import requests
 import yaml
 from PIL import Image, ImageDraw, ImageFont
 
+import theme_dap
+
 ROOT = Path(__file__).resolve().parent
 STATE_FILE = ROOT / "state" / "seen.json"
 IMAGES_DIR = ROOT / "images"
@@ -62,6 +64,31 @@ def clean_text(raw: str) -> str:
     text = html.unescape(text)
     text = re.sub(r"\[&#8230;\]|\[…\]|\[\.\.\.\]", "…", text)
     return re.sub(r"\s+", " ", text).strip()
+
+
+def _fold(s: str) -> str:
+    """Πεζά χωρίς τόνους/στίξη, για σύγκριση κειμένων."""
+    import unicodedata
+    s = unicodedata.normalize("NFD", s.lower())
+    return re.sub(r"[\W_]+", "", "".join(c for c in s if not unicodedata.combining(c)))
+
+
+def clean_excerpt(excerpt: str, title: str) -> str:
+    # Το αυτόματο υποσέλιδο του WordPress: «Το άρθρο … εμφανίστηκε πρώτα στο …»
+    excerpt = re.sub(r"\s*(Το άρθρο|The post)\s.*?(εμφανίστηκε πρώτα στο|appeared first on)\s.*$",
+                     "", excerpt, flags=re.S).strip()
+    # Αν η περίληψη ξεκινά με τον τίτλο (με άλλα κεφαλαία/τόνους), τον αφαιρούμε
+    ft = _fold(title)
+    if ft:
+        acc = ""
+        for i, ch in enumerate(excerpt):
+            acc = _fold(excerpt[:i + 1])
+            if acc == ft:
+                excerpt = excerpt[i + 1:].lstrip(" .:–-")
+                break
+            if not ft.startswith(acc):
+                break
+    return excerpt.strip()
 
 
 def item_key(entry) -> str:
@@ -420,6 +447,7 @@ def main() -> int:
     first_run_posts = st.get("first_run_posts", 0)
     max_attempts = st.get("max_attempts", 3)
     stories_default = st.get("stories", True)
+    theme_default = st.get("theme", "classic")
 
     tokens = parse_tokens(os.environ.get("IG_TOKENS") or "", [s["id"] for s in cfg["sources"]])
     state = load_state()
@@ -467,19 +495,18 @@ def main() -> int:
         for e in new:
             key = item_key(e)
             title = clean_text(e.get("title", ""))
-            excerpt = clean_text(e.get("summary", ""))
-            if excerpt.startswith(title):
-                excerpt = excerpt[len(title):].strip()
+            excerpt = clean_excerpt(clean_text(e.get("summary", "")), title)
             cats = [t.get("term", "") for t in e.get("tags", [])
                     if t.get("term", "") not in ("Μη κατηγοριοποιημένο", "Uncategorized")]
             wanted = src.get("categories") or cats
             category = next((c for c in cats if c in wanted), cats[0] if cats else "")
             date = item_date(e)
             h = hashlib.sha1(key.encode()).hexdigest()[:12]
-            img = make_image(src, title, date, excerpt, category, IMAGES_DIR / sid / f"{h}.jpg")
+            render = theme_dap.make_image if src.get("theme", theme_default) == "dap" else make_image
+            img = render(src, title, date, excerpt, category, IMAGES_DIR / sid / f"{h}.jpg")
             story_img = None
             if src.get("stories", stories_default):
-                story_img = make_image(src, title, date, excerpt, category,
+                story_img = render(src, title, date, excerpt, category,
                                        IMAGES_DIR / sid / f"{h}_story.jpg", story=True)
             jobs.append((src, key, title, date, excerpt, e.get("link", ""), img, story_img))
             log(f"🖼  {sid}: {title[:70]}")
