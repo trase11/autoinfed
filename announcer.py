@@ -358,6 +358,35 @@ def raw_url(path: Path) -> str:
 # --------------------------------------------------------------------------- #
 # Κύρια ροή
 # --------------------------------------------------------------------------- #
+def parse_tokens(raw: str, ids: list[str]) -> dict:
+    """Διαβάζει το IG_TOKENS. Δέχεται:
+       {"mie": "EAA..."}            (κανονική μορφή)
+       {“mie”: “EAA...”}            (έξυπνα εισαγωγικά του iPhone)
+       mie: EAA...  /  mie=EAA...   (μία γραμμή ανά τμήμα)
+    Δεν τυπώνει ποτέ το ίδιο το token."""
+    raw = raw.strip()
+    if not raw:
+        return {}
+    for a, b in (("“", '"'), ("”", '"'), ("„", '"'), ("«", '"'), ("»", '"'), ("‘", "'"), ("’", "'")):
+        raw = raw.replace(a, b)
+    try:
+        data = json.loads(raw)
+        if isinstance(data, dict):
+            return data
+    except json.JSONDecodeError:
+        pass
+    out = {}
+    for line in re.split(r"[\n,;{}]+", raw):
+        m = re.match(r"""\s*["']?([a-z0-9_-]+)["']?\s*[:=]\s*["']?([A-Za-z0-9_.-]{20,})["']?\s*$""", line)
+        if m and m.group(1) in ids:
+            out[m.group(1)] = m.group(2)
+    if out:
+        return out
+    kind = "σκέτο token χωρίς όνομα τμήματος" if re.fullmatch(r"(EAA|IGAA)\S+", raw) else "άγνωστη μορφή"
+    raise SystemExit(f"❌ Το secret IG_TOKENS δεν διαβάζεται ({kind}). "
+                     'Γράψ\' το έτσι: {"mie": "EAA..."}  ή απλά:  mie: EAA...')
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true", help="μόνο εικόνες, χωρίς Instagram/git")
@@ -371,7 +400,7 @@ def main() -> int:
     first_run_posts = st.get("first_run_posts", 0)
     max_attempts = st.get("max_attempts", 3)
 
-    tokens = json.loads(os.environ.get("IG_TOKENS") or "{}")
+    tokens = parse_tokens(os.environ.get("IG_TOKENS") or "", [s["id"] for s in cfg["sources"]])
     state = load_state()
     jobs = []  # (src, key, title, date, excerpt, link, image_path)
     had_error = False
