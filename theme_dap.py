@@ -1,7 +1,6 @@
-"""Θέμα εικόνων στο ύφος της καμπάνιας ΔΑΠ-ΝΔΦΚ «Άλμα στο μέλλον».
-
-Μπλε διαγώνιο gradient, λεπτές καμπύλες «στίβου», λευκό περιστέρι,
-ψηλά στενά κεφαλαία γράμματα και γαλάζιο (#3DCBFF) για τις λεπτομέρειες.
+"""Θέμα εικόνων: μπλε διαγώνιο gradient με λεπτές καμπύλες «στίβου», ψηλά στενά
+κεφαλαία γράμματα και γαλάζιο (#3DCBFF) για τις λεπτομέρειες. Πάνω το όνομα του
+τμήματος και, αν υπάρχει, το λογότυπό του (assets/logo_<id>.png).
 """
 from __future__ import annotations
 
@@ -19,8 +18,6 @@ BLACK = str(F / "FiraSansExtraCondensed-Black.ttf")
 BOLD = str(F / "FiraSansExtraCondensed-Bold.ttf")
 REG = str(F / "FiraSansCondensed-Regular.ttf")
 MED = str(F / "FiraSansCondensed-Medium.ttf")
-DOVE = ROOT / "assets" / "dove_white.png"
-LOGO = ROOT / "assets" / "alma_logo_light.png"
 
 NAVY = (0, 32, 96)
 MID = (0, 88, 160)
@@ -102,17 +99,20 @@ def make_image(src: dict, title: str, date: datetime, excerpt: str, category: st
     d = ImageDraw.Draw(img)
     maxw = W - 2 * PAD
 
-    # --- Κεφαλίδα: περιστέρι + ΔΑΠ-ΝΔΦΚ + τμήμα
+    # --- Κεφαλίδα: λογότυπο τμήματος (αν υπάρχει) + «ΤΜΗΜΑ …» + «ΠΑΝΕΠΙΣΤΗΜΙΟ ΘΕΣΣΑΛΙΑΣ»
     y0 = top + 70
-    dw, dh = _paste(img, DOVE, 118, (PAD, y0))
-    hx = PAD + dw + 26
-    d.text((hx, y0 - 6), "ΔΑΠ-ΝΔΦΚ", font=ImageFont.truetype(BLACK, 50), fill=WHITE)
-    nf = ImageFont.truetype(MED, 32)
-    name = src.get("name", "")
-    while d.textlength(name, font=nf) > W - PAD - hx and nf.size > 22:
-        nf = ImageFont.truetype(MED, nf.size - 1)
-    d.text((hx, y0 + 52), name, font=nf, fill=PALE)
-    y = y0 + max(dh, 100) + 70
+    logo = ROOT / "assets" / f"logo_{src.get('id', '')}.png"
+    dw, dh = _paste(img, logo, 118, (PAD, y0)) if logo.exists() else (0, 0)
+    hx = PAD + (dw + 28 if dw else 0)
+    dept = "ΤΜΗΜΑ " + _upper_gr(re.sub(r"\s*ΠΘ$", "", src.get("name", "")))
+    tf_ = ImageFont.truetype(BLACK, 52)
+    while d.textlength(dept, font=tf_) > W - PAD - hx and tf_.size > 30:
+        tf_ = ImageFont.truetype(BLACK, tf_.size - 2)
+    head_h = tf_.size + 44
+    ty = y0 + max(0, (dh - head_h) // 2)                     # κάθετα στο κέντρο του λογότυπου
+    d.text((hx, ty - 4), dept, font=tf_, fill=WHITE)
+    d.text((hx, ty + tf_.size + 6), "ΠΑΝΕΠΙΣΤΗΜΙΟ ΘΕΣΣΑΛΙΑΣ", font=ImageFont.truetype(MED, 30), fill=PALE)
+    y = y0 + max(dh, head_h) + 70
 
     # --- Ετικέτα «ΑΝΑΚΟΙΝΩΣΗ» / κατηγορία + ημερομηνία
     chip = _upper_gr(category) if category else "ΑΝΑΚΟΙΝΩΣΗ"
@@ -164,8 +164,6 @@ def make_image(src: dict, title: str, date: datetime, excerpt: str, category: st
     # --- Υποσέλιδο: πού είναι ολόκληρη η ανακοίνωση + λογότυπο καμπάνιας
     domain = re.sub(r"^https?://(www\.)?([^/?]+).*$", r"\2",
                     src.get("site") or src.get("url") or src.get("feed", ""))
-    logo_w = 104 if story else 92
-    lw, lh_ = _paste(img, LOGO, logo_w, (W - PAD, H - bottom - 60), anchor="rb")
     fy = H - bottom - 60 - 70
     small, big = footer if footer is not None else ("Ολόκληρη η ανακοίνωση", domain)
     d.text((PAD, fy), small, font=ImageFont.truetype(REG, 30), fill=PALE)
