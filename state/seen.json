@@ -15,7 +15,31 @@
  "_eclass_last": {
   "mie": 1795296653.059091
  },
- "_pending": {},
+ "_pending": {
+  "45c74f092eda": {
+   "kind": "custom",
+   "sid": "mie",
+   "key": "custom:programma-xeim-2026-27-v2",
+   "title": "Ωρολόγιο πρόγραμμα χειμερινού εξαμήνου 2026-27",
+   "date": "2026-11-21T23:37:48.827071+02:00",
+   "excerpt": "",
+   "link": "",
+   "category": "",
+   "caption": "📅 Ωρολόγιο πρόγραμμα χειμερινού εξαμήνου 2026-27\n\nΣύρε για το εξάμηνό σου: 1ο · 3ο · 5ο · 7ο · 9ο 👉\nΣε κάθε σελίδα θα βρεις μαθήματα, ώρες και αίθουσες.\n\nΤο επίσημο πρόγραμμα, με τους διδάσκοντες, βρίσκεται στο mie.uth.gr. Αν γίνει κάποια αλλαγή, θα ενημερώσουμε.\nΣώσε το post για να το έχεις πρόχειρο! 📌\n\n#uth #mie #ΠανεπιστήμιοΘεσσαλίας",
+   "own_cover": true,
+   "slides": [
+    "images/mie/programma/s00_v2.jpg",
+    "images/mie/programma/s01_sem1.jpg",
+    "images/mie/programma/s02_sem3.jpg",
+    "images/mie/programma/s03_sem5.jpg",
+    "images/mie/programma/s04_sem7.jpg",
+    "images/mie/programma/s05_sem9.jpg"
+   ],
+   "img": "images/mie/programma/s00_v2.jpg",
+   "story": "images/mie/programma/story_v2.jpg",
+   "resend": true
+  }
+ },
  "_tg_hello": "-5131620464",
  "_tg_kb": "mie",
  "_tg_offset": 811151737,
