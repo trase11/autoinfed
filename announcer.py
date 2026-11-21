@@ -659,6 +659,7 @@ def approval_round(tg: Telegram, cfg: dict, state: dict, new_jobs: list, categor
             ready.append((srcs[p["sid"]], p["key"], p["title"], datetime.fromisoformat(p["date"]),
                           p["excerpt"], p["link"], img,
                           ROOT / p["story"] if p.get("story") else None))
+    ready.sort(key=lambda j: j[3])          # με χρονολογική σειρά, όποια σειρά κι αν πατηθεί ✅
     waiting = sum(1 for p in pending.values() if not p.get("approved"))
     if waiting:
         log(f"⏳ {waiting} ανακοινώσεις περιμένουν την έγκρισή σου στο Telegram")
