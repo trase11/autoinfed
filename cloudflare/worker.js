@@ -13,6 +13,8 @@
 //   CHAT_ID    (text)    6721979664
 //   GH_REPO    (text)    trase11/autoinfed
 //   Q          (KV namespace binding)
+//   Cron Trigger (Settings → Triggers): */5 * * * *  → έλεγχος των site κάθε 5 λεπτά,
+//                 γιατί το χρονοδιάγραμμα του GitHub χάνει τις περισσότερες εκτελέσεις.
 //
 // Μετά το deploy άνοιξε μία φορά:  https://<worker>.workers.dev/setup
 
@@ -39,7 +41,7 @@ async function tg(env, method, body) {
 }
 const say = (env, text) => tg(env, "sendMessage", { chat_id: env.CHAT_ID, text });
 
-async function dispatch(env, updateId) {
+async function dispatch(env, updateId, quiet = false) {
   const r = await fetch(
     `https://api.github.com/repos/${env.GH_REPO}/actions/workflows/announce.yml/dispatches`, {
       method: "POST",
@@ -51,7 +53,7 @@ async function dispatch(env, updateId) {
       },
       body: JSON.stringify({ ref: "main", inputs: { wait_for: String(updateId) } }),
     });
-  if (r.status >= 300) {
+  if (r.status >= 300 && !quiet) {
     await say(env, `⚠️ Δεν ξεκίνησε η δουλειά στο GitHub (${r.status}). ` +
                    "Θα γίνει στον επόμενο αυτόματο έλεγχο (έως 15').");
   }
@@ -147,6 +149,11 @@ async function handle(u, env) {
 }
 
 export default {
+  // Αξιόπιστο «ξυπνητήρι»: ξεκινάει τον έλεγχο των site στο GitHub κάθε 5 λεπτά
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(dispatch(env, "", true));
+  },
+
   async fetch(req, env, ctx) {
     const url = new URL(req.url);
     const hookSecret = (await sha256hex("autoinfed-webhook:" + env.BOT_TOKEN)).slice(0, 64);
