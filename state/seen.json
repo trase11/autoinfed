@@ -1,7 +1,9 @@
 {
  "_composes": {},
  "_custom": {
-  "attempts": {},
+  "attempts": {
+   "custom:60f5641c359e": 1
+  },
   "seen": {
    "custom:3614729aaf54": "2026-11-21T16:36+02:00",
    "custom:fdc0337e76fb": "rejected"
@@ -12,6 +14,8 @@
  },
  "_pending": {
   "75b9aca050ec": {
+   "approved": true,
+   "by": "Charis",
    "caption": "Απόφαση Δ.Σ. Μηχ μηχ Π.Θ.\n\n#uth #mie #ΠανεπιστήμιοΘεσσαλίας",
    "category": "",
    "date": "2026-11-21T18:33:28.872373+02:00",
@@ -34,7 +38,7 @@
  },
  "_tg_hello": "-5131620464",
  "_tg_kb": "mie",
- "_tg_offset": 811151731,
+ "_tg_offset": 811151732,
  "mie": {
   "attempts": {},
   "eclass_feeds": [],
