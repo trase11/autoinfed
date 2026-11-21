@@ -413,17 +413,17 @@ def _pid(key: str) -> str:
     return hashlib.sha1(key.encode()).hexdigest()[:12]
 
 
-def approval_round(tg: Telegram, cfg: dict, state: dict, new_jobs: list):
+def approval_round(tg: Telegram, cfg: dict, state: dict, new_jobs: list, category_of: dict):
     """1) διαβάζει τα ✅/❌ που πατήθηκαν, 2) στέλνει προεπισκόπηση για τα νέα,
     3) επιστρέφει όσα έχουν εγκριθεί για δημοσίευση."""
     pending = state.setdefault("_pending", {})
     offset = state.get("_tg_offset", 0)
     try:
-        decisions, offset, strangers = tg.read_updates(offset)
+        decisions, offset, strangers, replies = tg.read_updates(offset)
         state["_tg_offset"] = offset
     except TelegramError as e:
         log(f"⚠️  Telegram: {e}")
-        decisions, strangers = {}, []
+        decisions, strangers, replies = {}, [], []
 
     if not tg.chat_id:
         try:
@@ -445,6 +445,39 @@ def approval_round(tg: Telegram, cfg: dict, state: dict, new_jobs: list):
                   "✅ / ❌ και θα ανεβαίνει στο Instagram μόνο αν πατήσεις ✅.")
         state["_tg_hello"] = True
 
+    srcs = {x["id"]: x for x in cfg["sources"]}
+    by_msg = {p["msg"]: pid for pid, p in pending.items()}
+    for to, text in replies:
+        pid = by_msg.get(to)
+        if not pid:
+            tg.notify("✏️ Για να αλλάξεις μια ανακοίνωση, κάνε «Απάντηση» (reply) στο μήνυμα "
+                      "με την εικόνα της και γράψε:\n"
+                      "• σκέτο κείμενο → νέα λεζάντα\n"
+                      "• τίτλος: … → νέος τίτλος στην εικόνα\n"
+                      "• περίληψη: … → νέο κείμενο στην εικόνα")
+            continue
+        p = pending[pid]
+        src = srcs.get(p["sid"])
+        m = re.match(r"\s*(τίτλος|τιτλος|title|περίληψη|περιληψη|summary)\s*:\s*(.*)", text, re.S | re.I)
+        what = []
+        if m and m.group(1).lower().startswith(("τ", "t")):
+            p["title"] = m.group(2).strip()   # (αν έχεις γράψει δική σου λεζάντα, μένει ίδια)
+            what.append("τίτλος")
+        elif m:
+            p["excerpt"] = m.group(2).strip()
+            what.append("περίληψη")
+        else:
+            p["caption"] = text.strip()[:2200]
+            what.append("λεζάντα")
+        if what[0] in ("τίτλος", "περίληψη") and src:
+            regen_images(src, p)
+        tg.set_status(p["msg"], p["preview"], f"✏️ Άλλαξε ({what[0]}) — δες τη νέα προεπισκόπηση")
+        p["preview"] = preview_text(src or {"name": p["sid"]}, p)
+        p["msg"] = tg.send_preview(ROOT / p["img"], p["preview"], pid)
+        by_msg[p["msg"]] = pid
+        p.pop("approved", None)      # μετά από αλλαγή χρειάζεται νέο ✅
+        log(f"✏️  {p['sid']}: άλλαξε {what[0]}: {p['title'][:60]}")
+
     for pid, choice in decisions.items():
         p = pending.get(pid)
         if not p or p.get("approved"):
@@ -461,23 +494,21 @@ def approval_round(tg: Telegram, cfg: dict, state: dict, new_jobs: list):
     # νέες ανακοινώσεις → προεπισκόπηση στο Telegram
     for src, key, title, date, excerpt, link, img, story_img in new_jobs:
         pid = _pid(key)
-        preview = (f"🏛 {src['name']}\n\n" + make_caption(src, title, date, excerpt, link))[:900]
+        entry = {"sid": src["id"], "key": key, "title": title, "date": date.isoformat(),
+                 "excerpt": excerpt, "link": link, "category": category_of.get(key, ""),
+                 "img": str(img.relative_to(ROOT)),
+                 "story": str(story_img.relative_to(ROOT)) if story_img else None}
+        preview = preview_text(src, entry)
         try:
-            msg = tg.send_preview(img, preview + ("\n\n📱 + story" if story_img else ""), pid)
+            msg = tg.send_preview(img, preview, pid)
         except Exception as e:
             log(f"⚠️  {src['id']}: δεν στάλθηκε προεπισκόπηση στο Telegram ({e}), θα ξαναδοκιμάσει")
             continue
         state[src["id"]]["seen"][key] = "pending"
-        pending[pid] = {
-            "sid": src["id"], "key": key, "title": title, "date": date.isoformat(),
-            "excerpt": excerpt, "link": link, "msg": msg, "preview": preview,
-            "img": str(img.relative_to(ROOT)),
-            "story": str(story_img.relative_to(ROOT)) if story_img else None,
-        }
+        pending[pid] = {**entry, "msg": msg, "preview": preview}
         log(f"📨 {src['id']}: στάλθηκε για έγκριση: {title[:60]}")
 
     # όσα έχουν εγκριθεί (τώρα ή σε προηγούμενο έλεγχο και δεν ανέβηκαν ακόμα)
-    srcs = {x["id"]: x for x in cfg["sources"]}
     ready = []
     for pid, p in pending.items():
         if p.get("approved") and p["sid"] in srcs:
@@ -488,6 +519,37 @@ def approval_round(tg: Telegram, cfg: dict, state: dict, new_jobs: list):
     if waiting:
         log(f"⏳ {waiting} ανακοινώσεις περιμένουν την έγκρισή σου στο Telegram")
     return ready
+
+
+def preview_text(src: dict, p: dict) -> str:
+    cap = p.get("caption") or make_caption(src, p["title"], datetime.fromisoformat(p["date"]),
+                                           p["excerpt"], p["link"])
+    extra = "\n\n📱 + story" if p.get("story") else ""
+    hint = "\n\n✏️ Reply εδώ για αλλαγή (κείμενο = λεζάντα, «τίτλος: …», «περίληψη: …»)"
+    head = f"🏛 {src.get('name', '')}\n\n"
+    room = 1024 - len(head) - len(extra) - len(hint)
+    return head + (cap if len(cap) <= room else cap[:room - 1] + "…") + extra + hint
+
+
+def regen_images(src: dict, p: dict) -> None:
+    """Ξαναφτιάχνει εικόνα (και story) μετά από αλλαγή τίτλου/περίληψης και τις ανεβάζει."""
+    cfg = yaml.safe_load((ROOT / "config.yaml").read_text(encoding="utf-8"))
+    theme = src.get("theme", cfg.get("settings", {}).get("theme", "classic"))
+    render = theme_dap.make_image if theme == "dap" else make_image
+    date = datetime.fromisoformat(p["date"])
+    v = p.get("v", 0) + 1                      # νέο όνομα αρχείου, αλλιώς το Instagram
+    p["v"] = v                                 # μπορεί να πάρει την παλιά (cache) εικόνα
+    base = Path(p["img"]).with_suffix("").name.split("_v")[0]
+    img = render(src, p["title"], date, p["excerpt"], p.get("category", ""),
+                 IMAGES_DIR / p["sid"] / f"{base}_v{v}.jpg")
+    paths = [img]
+    p["img"] = str(img.relative_to(ROOT))
+    if p.get("story"):
+        st = render(src, p["title"], date, p["excerpt"], p.get("category", ""),
+                    IMAGES_DIR / p["sid"] / f"{base}_v{v}_story.jpg", story=True)
+        p["story"] = str(st.relative_to(ROOT))
+        paths.append(st)
+    push_images(paths)
 
 
 def done_pending(tg, state: dict, key: str, status: str) -> None:
@@ -557,7 +619,8 @@ def main() -> int:
 
     tokens = parse_tokens(os.environ.get("IG_TOKENS") or "", [s["id"] for s in cfg["sources"]])
     state = load_state()
-    jobs = []  # (src, key, title, date, excerpt, link, image_path)
+    jobs = []  # (src, key, title, date, excerpt, link, image_path, story_path)
+    category_of: dict[str, str] = {}
     had_error = False
 
     for src in cfg["sources"]:
@@ -615,6 +678,7 @@ def main() -> int:
                 story_img = render(src, title, date, excerpt, category,
                                        IMAGES_DIR / sid / f"{h}_story.jpg", story=True)
             jobs.append((src, key, title, date, excerpt, e.get("link", ""), img, story_img))
+            category_of[key] = category
             log(f"🖼  {sid}: {title[:70]}")
 
     if args.dry_run:
@@ -625,7 +689,7 @@ def main() -> int:
         push_images([p for j in jobs for p in j[-2:] if p])
 
     if tg:
-        jobs = approval_round(tg, cfg, state, jobs)
+        jobs = approval_round(tg, cfg, state, jobs, category_of)
         if jobs is None:          # δεν έχει οριστεί ακόμα σε ποια συνομιλία στέλνουμε
             save_state(state)
             return 0
@@ -650,7 +714,8 @@ def main() -> int:
             done_pending(tg, state, key, "↩️ Υπήρχε ήδη στο Instagram")
             continue
         try:
-            media_id = ig_publish(token, raw_url(img), make_caption(src, title, date, excerpt, link))
+            custom = state.get("_pending", {}).get(_pid(key), {}).get("caption")
+            media_id = ig_publish(token, raw_url(img), custom or make_caption(src, title, date, excerpt, link))
             s["seen"][key] = datetime.now(ATHENS).isoformat(timespec="minutes")
             s["attempts"].pop(key, None)
             log(f"✅ {sid}: δημοσιεύτηκε ({media_id})")

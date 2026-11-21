@@ -62,12 +62,14 @@ class Telegram:
             pass
 
     # ---- ανάγνωση απαντήσεων -------------------------------------------------
-    def read_updates(self, offset: int) -> tuple[dict[str, str], int, list[str]]:
-        """Επιστρέφει ({pid: 'y'|'n'}, νέο offset, άγνωστες συνομιλίες για log)."""
+    def read_updates(self, offset: int):
+        """Επιστρέφει ({pid: 'y'|'n'}, νέο offset, άγνωστες συνομιλίες, απαντήσεις).
+        απαντήσεις = [(message_id στο οποίο απάντησε, κείμενο)] — για επεξεργασία."""
         updates = self._call("getUpdates", offset=offset + 1 if offset else 0, timeout=0,
                              allowed_updates=["callback_query", "message"])
         decisions: dict[str, str] = {}
         strangers: list[str] = []
+        replies: list[tuple[int | None, str]] = []
         new_offset = offset
         for u in updates:
             new_offset = max(new_offset, u["update_id"])
@@ -85,7 +87,10 @@ class Telegram:
                         pass
             elif msg:
                 chat = msg.get("chat", {})
-                if str(chat.get("id")) != self.chat_id:
+                if str(chat.get("id")) == self.chat_id and msg.get("text") and not msg["text"].startswith("/"):
+                    to = (msg.get("reply_to_message") or {}).get("message_id")
+                    replies.append((to, msg["text"]))
+                elif str(chat.get("id")) != self.chat_id:
                     who = chat.get("username") or chat.get("first_name") or "?"
                     strangers.append(f"{chat.get('id')} ({who})")
-        return decisions, new_offset, strangers
+        return decisions, new_offset, strangers, replies
