@@ -115,7 +115,8 @@ def _paste(img, path: Path, box_w: int, xy, anchor="lt", navy: bool = False):
 
 def make_image(src: dict, title: str, date: datetime, excerpt: str, category: str, out: Path,
                story: bool = False, footer: tuple[str, str] | None = None,
-               excerpt_size: int | None = None, style: str = "blue") -> Path:
+               excerpt_size: int | None = None, style: str = "blue",
+               signature: str = "") -> Path:
     """footer=(μικρό κείμενο, μεγάλο γαλάζιο κείμενο) αντί για «Ολόκληρη η ανακοίνωση / site».
     style: "blue" (καμπάνια) ή "white" (λευκό φόντο, μπλε γράμματα)."""
     H = 1920 if story else 1350
@@ -180,6 +181,8 @@ def make_image(src: dict, title: str, date: datetime, excerpt: str, category: st
     ef = ImageFont.truetype(REG, excerpt_size or (38 if story else 35))
     eh = int(ef.size * 1.38)
     room = (footer_y - 30 - y) // eh
+    if signature:                       # μια γραμμή κρατιέται για την υπογραφή
+        room -= 1
     if excerpt and room >= 1:
         elines = _wrap(d, excerpt, ef, maxw)
         if len(elines) > room:
@@ -188,6 +191,9 @@ def make_image(src: dict, title: str, date: datetime, excerpt: str, category: st
         for ln in elines:
             d.text((PAD, y), ln, font=ef, fill=SUB)
             y += eh
+    if signature:                       # υπογραφή κάτω από το κείμενο, ίδια γραμματοσειρά
+        sf = ImageFont.truetype(BOLD, ef.size)
+        d.text((PAD, y + int(eh * 0.25)), signature, font=sf, fill=TXT)
 
     # --- Υποσέλιδο: πού είναι ολόκληρη η ανακοίνωση + λογότυπο καμπάνιας
     domain = re.sub(r"^https?://(www\.)?([^/?]+).*$", r"\2",

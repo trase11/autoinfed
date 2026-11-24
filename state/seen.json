@@ -35,7 +35,10 @@
    "sid": "mie",
    "story": "images/mie/exetastiki_ian_v1_story.jpg",
    "style": "blue",
-   "title": "Καθυστέρηση εξεταστικής Ιανουαρίου"
+   "title": "Καθυστέρηση εξεταστικής Ιανουαρίου",
+   "signature": "ΔΑΠ-ΝΔΦΚ Μηχανολόγων Μηχανικών",
+   "v": 1,
+   "resend": true
   }
  },
  "_tg_hello": "-5131620464",

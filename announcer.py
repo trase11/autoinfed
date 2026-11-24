@@ -765,6 +765,8 @@ def regen_images(src: dict, p: dict, style: str | None = None) -> None:
         def render(*a, **k):
             if p.get("footer"):
                 k.setdefault("footer", tuple(p["footer"]))
+            if p.get("signature"):
+                k.setdefault("signature", p["signature"])
             return theme_dap.make_image(*a, style=style, **k)
     else:
         render = make_image
