@@ -763,6 +763,8 @@ def regen_images(src: dict, p: dict, style: str | None = None) -> None:
     style = p.get("style", "blue")
     if theme == "dap":
         def render(*a, **k):
+            if p.get("footer"):
+                k.setdefault("footer", tuple(p["footer"]))
             return theme_dap.make_image(*a, style=style, **k)
     else:
         render = make_image
