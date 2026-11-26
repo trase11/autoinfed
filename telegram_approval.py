@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import time
+from contextlib import contextmanager
 from pathlib import Path
 
 import requests
@@ -21,9 +22,14 @@ class TelegramError(RuntimeError):
 
 
 class Telegram:
-    def __init__(self, token: str, chat_id: int | str | None, queue_url: str | None = None):
+    def __init__(self, token: str, chat_id: int | str | None, queue_url: str | None = None,
+                 extra_chats: list | None = None):
         self.token = token
         self.chat_id = str(chat_id) if chat_id else None
+        self.main_chat = self.chat_id
+        # Όλες οι ομάδες που ακούει το bot: η κεντρική + μία ανά τμήμα (αν έχει δική του)
+        self.chats = {c for c in [self.chat_id, *[str(x) for x in (extra_chats or []) if x]] if c}
+        self.chat_of: dict[str, str] = {}  # pid → ομάδα από την οποία ήρθε το ✅/❌/στυλ
         # Με Cloudflare Worker: τα μηνύματα έρχονται από την ουρά του Worker (webhook),
         # και τις άμεσες απαντήσεις στον χρήστη τις δίνει ο Worker («live» λειτουργία).
         self.queue_url = (queue_url or "").rstrip("/") or None
@@ -31,11 +37,34 @@ class Telegram:
         self.who: dict[str, str] = {}      # pid → όνομα όποιου πάτησε ✅/❌ (για ομάδες)
         self.styles: dict[str, str] = {}   # pid → στυλ που διάλεξε κάποιος (blue/white/photo)
 
+    @contextmanager
+    def to(self, chat):
+        """Ό,τι στέλνεται μέσα στο with πάει στη συγκεκριμένη ομάδα."""
+        prev = self.chat_id
+        self.chat_id = str(chat) if chat else self.main_chat
+        try:
+            yield self
+        finally:
+            self.chat_id = prev
+
+    def _queue_key(self) -> str:
+        return hashlib.sha256(f"autoinfed-queue:{self.token}".encode()).hexdigest()
+
+    def register_chats(self) -> None:
+        """Λέει στον Worker ποιες ομάδες είναι δικές μας (για τις άμεσες απαντήσεις)."""
+        if not self.queue_url:
+            return
+        try:
+            requests.post(f"{self.queue_url}/chats", json=sorted(self.chats), timeout=20,
+                          headers={"Authorization": f"Bearer {self._queue_key()}"})
+        except requests.RequestException:
+            pass
+
     def _fetch_updates(self, offset: int, wait_for: int = 0) -> list[dict]:
         if not self.queue_url:
             return self._call("getUpdates", offset=offset + 1 if offset else 0, timeout=0,
                               allowed_updates=["callback_query", "message"])
-        key = hashlib.sha256(f"autoinfed-queue:{self.token}".encode()).hexdigest()
+        key = self._queue_key()
         deadline = time.time() + 90
         while True:
             r = requests.get(f"{self.queue_url}/updates", params={"after": offset},
@@ -109,11 +138,12 @@ class Telegram:
             msg = u.get("message")
             if cq:
                 chat = str(cq.get("message", {}).get("chat", {}).get("id", ""))
-                if self.chat_id and chat == self.chat_id and ":" in cq.get("data", ""):
+                if chat in self.chats and ":" in cq.get("data", ""):
                     choice, pid = cq["data"].split(":", 1)
                     if choice == "s":                       # αλλαγή στυλ: s:<στυλ>:<pid>
                         st, pid = pid.split(":", 1)
                         self.styles[pid] = st
+                        self.chat_of[pid] = chat
                         if not self.live:
                             try:
                                 self._call("answerCallbackQuery", callback_query_id=cq["id"],
@@ -122,6 +152,7 @@ class Telegram:
                                 pass
                         continue
                     decisions[pid] = choice
+                    self.chat_of[pid] = chat
                     self.who[pid] = (cq.get("from") or {}).get("first_name", "")
                     if self.live:          # την άμεση απάντηση την έδωσε ήδη ο Worker
                         continue
@@ -132,7 +163,7 @@ class Telegram:
                         pass
             elif msg:
                 chat = msg.get("chat", {})
-                if str(chat.get("id")) == self.chat_id:
+                if str(chat.get("id")) in self.chats:
                     replies.append(msg)          # όλα τα δικά σου μηνύματα, με τη σειρά
                 else:
                     who = chat.get("username") or chat.get("first_name") or "?"

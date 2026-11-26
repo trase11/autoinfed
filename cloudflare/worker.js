@@ -10,7 +10,8 @@
 // Ρυθμίσεις στο Cloudflare (Settings → Variables and Secrets / Bindings):
 //   BOT_TOKEN  (secret)  το token του bot από τον BotFather
 //   GH_TOKEN   (secret)  fine-grained token GitHub με «Actions: Read and write» στο autoinfed
-//   CHAT_ID    (text)    6721979664
+//   CHAT_ID    (text)    η κεντρική ομάδα (οι ομάδες των τμημάτων έρχονται μόνες τους
+//                        από το config μέσω /chats, δεν χρειάζεται να τις γράψεις εδώ)
 //   GH_REPO    (text)    trase11/autoinfed
 //   Q          (KV namespace binding)
 //   Cron Trigger (Settings → Triggers): */5 * * * *  → έλεγχος των site κάθε 5 λεπτά,
@@ -39,7 +40,14 @@ async function tg(env, method, body) {
   });
   return r.json();
 }
-const say = (env, text) => tg(env, "sendMessage", { chat_id: env.CHAT_ID, text });
+const say = (env, text, chat) => tg(env, "sendMessage", { chat_id: chat || env.CHAT_ID, text });
+
+// Οι ομάδες που ακούμε: η κεντρική + όσες έχει το config (τις στέλνει το GitHub στο /chats)
+async function allowed(env, chat) {
+  if (String(chat) === String(env.CHAT_ID)) return true;
+  const list = JSON.parse((await env.Q.get("chats")) || "[]");
+  return list.map(String).includes(String(chat));
+}
 
 async function dispatch(env, updateId, quiet = false) {
   const r = await fetch(
@@ -60,7 +68,7 @@ async function dispatch(env, updateId, quiet = false) {
 }
 
 // Κάθε άτομο έχει το δικό του πρόχειρο (για ομάδες με πολλούς διαχειριστές)
-async function getStage(env, uid) {
+async function getStage(env, uid) {          // uid = «ομάδα:χρήστης»
   return JSON.parse((await env.Q.get("stage:" + uid)) || '{"active":false}');
 }
 const setStage = (env, uid, s) => env.Q.put("stage:" + uid, JSON.stringify(s), { expirationTtl: 7 * 24 * 3600 });
@@ -72,7 +80,7 @@ async function handle(u, env) {
   // 2) άμεση απάντηση μόνο στη δική σου συνομιλία
   const cq = u.callback_query;
   if (cq) {
-    if (String(cq.message?.chat?.id) !== String(env.CHAT_ID)) return;
+    if (!(await allowed(env, cq.message?.chat?.id))) return;
     const data = cq.data || "";
     const text = data.startsWith("y:") ? "✅ Ανεβαίνει στο Instagram σε ~1 λεπτό"
       : data.startsWith("s:") ? "🎨 Φτιάχνω τη νέα εκδοχή, έρχεται σε ~1 λεπτό"
@@ -82,16 +90,23 @@ async function handle(u, env) {
     return;
   }
   const m = u.message;
-  if (!m || String(m.chat?.id) !== String(env.CHAT_ID)) return;
-
+  if (!m) return;
+  const chat = String(m.chat?.id);
   const text = (m.text || "").trim().replace(/@\w+bot$/i, "");   // «/start@onoma_bot» σε ομάδες
+  if (text === "/id") {          // σε οποιαδήποτε ομάδα: για να βρεις τον αριθμό της
+    await say(env, `🆔 Ο αριθμός αυτής της ομάδας είναι: ${chat}\n` +
+                   "Δώσ' τον στον διαχειριστή για να συνδεθεί με τη σελίδα του τμήματος.", chat);
+    return;
+  }
+  if (!(await allowed(env, chat))) return;
+
   const isPhoto = !!(m.photo || (m.document && (m.document.mime_type || "").startsWith("image/")));
-  const uid = String(m.from?.id || "me");
+  const uid = chat + ":" + String(m.from?.id || "me");
   const who = m.from?.first_name ? m.from.first_name + ": " : "";
   const isGroup = m.chat?.type === "group" || m.chat?.type === "supergroup";
   const toBot = !!m.reply_to_message?.from?.is_bot;
   const st = await getStage(env, uid);
-  const sayTo = t => say(env, isGroup ? who + t : t);
+  const sayTo = t => say(env, isGroup ? who + t : t, chat);
 
   if (["/start", "/menu", "/help", "βοήθεια"].includes(text)) {
     await sayTo("👋 Σου στέλνω τα κουμπιά σε λίγα δευτερόλεπτα…");
@@ -182,6 +197,17 @@ export default {
       }
       const u = await req.json();
       ctx.waitUntil(handle(u, env).catch(e => console.log("handle error", e)));
+      return new Response("ok");
+    }
+
+    if (url.pathname === "/chats" && req.method === "POST") {
+      // Το GitHub Actions γράφει εδώ τις ομάδες των τμημάτων από το config
+      const key = await sha256hex("autoinfed-queue:" + env.BOT_TOKEN);
+      if (req.headers.get("Authorization") !== `Bearer ${key}`) {
+        return new Response("forbidden", { status: 403 });
+      }
+      const list = (await req.json()).map(String).slice(0, 50);
+      await env.Q.put("chats", JSON.stringify(list));
       return new Response("ok");
     }
 

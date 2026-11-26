@@ -53,11 +53,16 @@ def keyboard_rows(srcs: list[dict]) -> list[list[str]]:
     return rows
 
 
-def ensure_keyboard(tg, state: dict, srcs: list[dict], force: bool = False) -> None:
+def ensure_keyboard(tg, state: dict, srcs: list[dict], chat: str = "", force: bool = False) -> None:
+    """Κάθε ομάδα έχει τα δικά της κουμπιά «📝 Νέα» (μόνο για τα τμήματά της)."""
+    kb = state.get("_tg_kb")
+    if not isinstance(kb, dict):
+        kb = state["_tg_kb"] = {}
     sig = ",".join(s["id"] for s in srcs)
-    if force or state.get("_tg_kb") != sig:
+    chat = chat or str(tg.chat_id)
+    if force or kb.get(chat) != sig:
         tg.send_keyboard("⌨️ Κουμπιά για νέες ανακοινώσεις:\n\n" + HELP, keyboard_rows(srcs))
-        state["_tg_kb"] = sig
+        kb[chat] = sig
 
 
 def _largest_photo(msg: dict) -> str | None:
@@ -88,21 +93,28 @@ def handle_message(tg, state: dict, msg: dict, srcs_by_id: dict, button_to_sid: 
     """Επεξεργάζεται ένα δικό σου μήνυμα για σύνθεση. Επιστρέφει True αν το «κατανάλωσε».
     Αν το μήνυμα ολοκληρώνει ανακοίνωση, την αφήνει στο state['_compose_done']."""
     text = re.sub(r"@\w+bot$", "", (msg.get("text") or "").strip(), flags=re.I)   # /start@onoma_bot
-    uid = str((msg.get("from") or {}).get("id", "me"))     # κάθε άτομο έχει δικό του πρόχειρο
+    chat = str((msg.get("chat") or {}).get("id", tg.chat_id))
+    # κάθε άτομο έχει δικό του πρόχειρο σε κάθε ομάδα
+    uid = f"{chat}:{(msg.get('from') or {}).get('id', 'me')}"
     drafts = state.setdefault("_composes", {})
-    if "_compose" in state:                                 # παλιά μορφή (ένα κοινό πρόχειρο)
-        drafts.setdefault(uid, state.pop("_compose"))
+    old = uid.split(":", 1)[1]
+    if old in drafts and chat == str(getattr(tg, "main_chat", chat)):   # παλιά μορφή (χωρίς ομάδα)
+        drafts.setdefault(uid, drafts.pop(old))
     c = drafts.get(uid)
 
     if text in ("/start", "/menu", "/help", "βοήθεια"):
-        state["_tg_kb"] = None              # ξαναστέλνει τα κουμπιά στο τέλος του γύρου
+        kb = state.get("_tg_kb")
+        if isinstance(kb, dict):
+            kb.pop(chat, None)              # ξαναστέλνει τα κουμπιά στο τέλος του γύρου
+        else:
+            state["_tg_kb"] = {}
         return True
     if text in button_to_sid:
         if c and (c.get("title") or c.get("photos")):
             _say(tg, "🗑 Το προηγούμενο πρόχειρο που δεν είχε ολοκληρωθεί πετάχτηκε.")
         who = (msg.get("from") or {}).get("first_name", "")
         drafts[uid] = {"sid": button_to_sid[text], "title": None, "caption": None,
-                       "photos": [], "own_cover": False, "changed": True, "by": who}
+                       "photos": [], "own_cover": False, "changed": True, "by": who, "chat": chat}
         return True
     if text == CANCEL:
         if c:

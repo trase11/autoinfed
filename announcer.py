@@ -167,6 +167,7 @@ ECLASS_RSS = "https://eclass.uth.gr/modules/announcements/rss.php?c={code}"
 
 
 _ECLASS_LINKS: dict | None = None
+_ECLASS_DEPT: dict = {}          # μάθημα → τμήμα, όταν η γραμμή του secret ξεκινά με «civ: …»
 
 
 def eclass_links() -> dict:
@@ -176,11 +177,38 @@ def eclass_links() -> dict:
     global _ECLASS_LINKS
     if _ECLASS_LINKS is None:
         _ECLASS_LINKS = {}
-        for url in re.findall(r"https?://\S+", os.environ.get("ECLASS_RSS", "")):
+        for line in os.environ.get("ECLASS_RSS", "").splitlines():
+            u = re.search(r"https?://\S+", line)
+            if not u:
+                continue
+            url = u.group(0).strip().rstrip(",;")
             m = re.search(r"[?&]c(?:ourse)?=([A-Za-z0-9_]+)", url)
-            if m:
-                _ECLASS_LINKS[m.group(1)] = url.strip().rstrip(",;")
+            if not m:
+                continue
+            _ECLASS_LINKS[m.group(1)] = url
+            dept = re.match(r"\s*([a-z]+)\s*:", line[:u.start()] + ":") if line[:u.start()].strip() else None
+            if dept:
+                _ECLASS_DEPT[m.group(1)] = dept.group(1)
     return _ECLASS_LINKS
+
+
+def eclass_courses(src: dict) -> list[dict]:
+    """Τα μαθήματα eClass ενός τμήματος: όσα γράφει το config ΚΑΙ όσα βρίσκονται στο
+    secret ECLASS_RSS, είτε με πρόθεμα τμήματος («civ: https://…») είτε επειδή ο
+    κωδικός του μαθήματος ξεκινά με το `eclass_prefix` του τμήματος (π.χ. MIE_).
+    Έτσι για νέο μάθημα αρκεί να μπει ο σύνδεσμός του στο secret."""
+    listed = list(src.get("eclass") or [])
+    have = {c["code"] for c in listed}
+    prefixes = src.get("eclass_prefix") or []
+    if isinstance(prefixes, str):
+        prefixes = [prefixes]
+    for code in eclass_links():
+        if code in have:
+            continue
+        dept = _ECLASS_DEPT.get(code)
+        if dept == src["id"] or (not dept and any(code.upper().startswith(p.upper()) for p in prefixes)):
+            listed.append({"code": code})
+    return listed
 
 
 def fetch_eclass(src: dict, state: dict, settings: dict) -> list:
@@ -198,8 +226,9 @@ def fetch_eclass(src: dict, state: dict, settings: dict) -> list:
     s = state[sid]
     known = s.setdefault("eclass_feeds", [])
     out = []
-    for course in src["eclass"]:
-        code, name = course["code"], course.get("name", course["code"])
+    courses = eclass_courses(src)
+    for course in courses:
+        code, name = course["code"], course.get("name")
         url = eclass_links().get(code) or ECLASS_RSS.format(code=code)
         try:
             r = requests.get(url, headers={"User-Agent": UA}, timeout=30)
@@ -210,6 +239,9 @@ def fetch_eclass(src: dict, state: dict, settings: dict) -> list:
             hint = "" if code in eclass_links() else " · βάλε τον προσωπικό σύνδεσμο RSS στο secret ECLASS_RSS"
             log(f"⚠️  {sid}: eClass {code} ({name}): {e}{hint}")
             continue
+        if not name:          # όνομα από τον τίτλο του RSS, π.χ. «Ανακοινώσεις - Στατική ΙΙ»
+            t = re.sub(r"^\s*(Ανακοινώσεις|Announcements)\s*[-–:]?\s*", "", parsed.feed.get("title") or "")
+            name = t.strip() or code
         entries = []
         for e in parsed.entries:
             e["tags"] = [{"term": name}]          # ετικέτα = όνομα μαθήματος
@@ -226,8 +258,8 @@ def fetch_eclass(src: dict, state: dict, settings: dict) -> list:
             log(f"🆕 {sid}: eClass {code} ({name}): {len(entries)} παλιές ανακοινώσεις σημειώθηκαν ως γνωστές")
             continue
         out += entries
-    if out or src["eclass"]:
-        log(f"📚 {sid}: eClass, {len(src['eclass'])} μαθήματα ελέγχθηκαν")
+    if out or courses:
+        log(f"📚 {sid}: eClass, {len(courses)} μαθήματα ελέγχθηκαν")
     return out
 
 
@@ -529,10 +561,31 @@ def _pid(key: str) -> str:
     return hashlib.sha1(key.encode()).hexdigest()[:12]
 
 
+def chat_for(tg: Telegram, src: dict) -> str:
+    """Η ομάδα Telegram του τμήματος (αν δεν έχει δική του, η κεντρική)."""
+    return str(src.get("telegram_chat_id") or tg.main_chat)
+
+
+def pchat(tg: Telegram, p: dict) -> str:
+    return str(p.get("chat") or tg.main_chat)
+
+
+def send_pending(tg: Telegram, src: dict, pid: str, p: dict, style: str | None = None) -> None:
+    """Στέλνει (ξανά) την προεπισκόπηση στην ομάδα του τμήματος και θυμάται πού πήγε."""
+    p["chat"] = chat_for(tg, src)
+    p["preview"] = preview_text(src, p)
+    with tg.to(p["chat"]):
+        if len(p.get("slides") or []) > 1:
+            tg.send_album([ROOT / x for x in p["slides"]])
+        p["msg"] = tg.send_preview(ROOT / p["img"], p["preview"], pid,
+                                   compose.styles_for(p), style or p.get("style", "blue"))
+
+
 def approval_round(tg: Telegram, cfg: dict, state: dict, new_jobs: list, category_of: dict,
                    tokens: dict | None = None):
     """1) διαβάζει τα ✅/❌, τις αλλαγές (reply) και τα πρόχειρα (📝 Νέα), 2) στέλνει
-    προεπισκόπηση για τα νέα, 3) επιστρέφει όσα έχουν εγκριθεί για δημοσίευση."""
+    προεπισκόπηση για τα νέα, 3) επιστρέφει όσα έχουν εγκριθεί για δημοσίευση.
+    Κάθε τμήμα μπορεί να έχει τη δική του ομάδα (telegram_chat_id στο block του)."""
     pending = state.setdefault("_pending", {})
     offset = state.get("_tg_offset", 0)
     try:
@@ -555,33 +608,54 @@ def approval_round(tg: Telegram, cfg: dict, state: dict, new_jobs: list, categor
             "Συνομιλίες που έγραψαν: " + (", ".join(strangers) or "καμία ακόμα"))
         return None
     if strangers:
-        log(f"ℹ️  Μηνύματα από άλλους χρήστες στο bot (αγνοούνται): {', '.join(strangers)}")
-    if state.get("_tg_hello") != tg.chat_id:          # νέα συνομιλία/ομάδα → ξανά καλωσόρισμα
-        tg.notify("✅ Το bot συνδέθηκε!\n\nΚάθε νέα ανακοίνωση θα σου έρχεται εδώ με κουμπιά "
-                  "✅ / ❌ και θα ανεβαίνει στο Instagram μόνο αν πατήσεις ✅.")
-        state["_tg_hello"] = tg.chat_id
-        state["_tg_kb"] = None                         # και ξανά τα κουμπιά
+        log(f"ℹ️  Μηνύματα από άλλες συνομιλίες (αγνοούνται): {', '.join(strangers)}")
 
     srcs = {x["id"]: x for x in cfg["sources"]}
     usable = [x for x in cfg["sources"] if x.get("enabled", True) and (tokens is None or x["id"] in tokens)]
-    button_to_sid = {compose.NEW + compose.short_name(x): x["id"] for x in usable}
     stories_default = cfg.get("settings", {}).get("stories", True)
+    # ποια τμήματα «ανήκουν» σε κάθε ομάδα (για τα κουμπιά 📝 Νέα)
+    groups: dict[str, list] = {}
+    for x in usable:
+        groups.setdefault(chat_for(tg, x), []).append(x)
+
+    hello = state.get("_tg_hello")
+    if not isinstance(hello, list):
+        hello = [hello] if hello else []
+    kb = state.get("_tg_kb")
+    if not isinstance(kb, dict):
+        kb = {tg.main_chat: kb} if kb else {}
+    for chat, members in groups.items():         # νέα ομάδα → καλωσόρισμα + κουμπιά
+        if chat not in hello:
+            names = ", ".join(compose.short_name(x) for x in members)
+            with tg.to(chat):
+                tg.notify(f"✅ Το bot συνδέθηκε για: {names}\n\nΚάθε νέα ανακοίνωση θα έρχεται εδώ με "
+                          "κουμπιά ✅ / ❌ και θα ανεβαίνει στο Instagram μόνο αν πατήσεις ✅.")
+            hello.append(chat)
+            kb.pop(chat, None)
+    state["_tg_hello"] = hello
+    state["_tg_kb"] = kb
 
     # --- μηνύματα: αλλαγές με reply, πρόχειρα νέων ανακοινώσεων ---------------
-    by_msg = {p.get("msg"): pid for pid, p in pending.items() if p.get("msg")}
-    hinted = False
+    by_msg = {(pchat(tg, p), p.get("msg")): pid for pid, p in pending.items() if p.get("msg")}
+    hinted = set()
     for m in msgs:
+        chat = str(m["chat"]["id"])
+        if (m.get("text") or "").strip().split("@")[0] == "/id":
+            continue                                  # την απάντηση τη δίνει ο Worker
         to = (m.get("reply_to_message") or {}).get("message_id")
         text = (m.get("text") or "").strip()
-        if to in by_msg and text:
-            edit_pending(tg, pending, by_msg[to], text, srcs, by_msg)
-            continue
-        if compose.handle_message(tg, state, m, srcs, button_to_sid):
-            continue
-        if not hinted and not tg.live:
-            tg.notify("✏️ Για αλλαγή σε ανακοίνωση: «Απάντηση» (reply) στο μήνυμα με την εικόνα της.\n\n"
-                      + compose.HELP)
-            hinted = True
+        with tg.to(chat):
+            if (chat, to) in by_msg and text:
+                edit_pending(tg, pending, by_msg[(chat, to)], text, srcs, by_msg)
+                continue
+            mine = groups.get(chat, [])
+            button_to_sid = {compose.NEW + compose.short_name(x): x["id"] for x in mine}
+            if compose.handle_message(tg, state, m, srcs, button_to_sid):
+                continue
+            if chat not in hinted and not tg.live and mine:
+                tg.notify("✏️ Για αλλαγή σε ανακοίνωση: «Απάντηση» (reply) στο μήνυμα με την εικόνα της.\n\n"
+                          + compose.HELP)
+                hinted.add(chat)
 
     # --- ολοκληρωμένα πρόχειρα → εικόνες → προεπισκόπηση -----------------------
     for c in state.pop("_compose_done", []):
@@ -592,36 +666,35 @@ def approval_round(tg: Telegram, cfg: dict, state: dict, new_jobs: list, categor
             entry = compose.build(tg, c, src, src.get("stories", stories_default))
         except Exception as e:
             log(f"⚠️  {c['sid']}: δεν φτιάχτηκε η δική σου ανακοίνωση: {e}")
-            tg.notify(f"⚠️ Δεν φτιάχτηκε η ανακοίνωση «{c['title']}»: {e}")
+            with tg.to(c.get("chat") or chat_for(tg, src)):
+                tg.notify(f"⚠️ Δεν φτιάχτηκε η ανακοίνωση «{c['title']}»: {e}")
             continue
         push_images([ROOT / x for x in entry["slides"]] + ([ROOT / entry["story"]] if entry["story"] else []))
         pid = _pid(entry["key"])
-        entry["preview"] = preview_text(src, entry)
-        if len(entry["slides"]) > 1:
-            tg.send_album([ROOT / x for x in entry["slides"]])
-        entry["msg"] = tg.send_preview(ROOT / entry["img"], entry["preview"], pid,
-                                       compose.styles_for(entry), entry.get("style"))
+        send_pending(tg, src, pid, entry, entry.get("style"))
         pending[pid] = entry
         log(f"📨 {c['sid']}: δική σου ανακοίνωση για έγκριση ({len(entry['slides'])} εικόνες): {c['title'][:60]}")
-    for c in state.get("_composes", {}).values():
+    for key, c in state.get("_composes", {}).items():
         if c.pop("changed", False) and not tg.live:
-            tg.notify(compose.status_line(c, srcs))
+            with tg.to(c.get("chat") or chat_for(tg, srcs.get(c["sid"], {}))):
+                tg.notify(compose.status_line(c, srcs))
 
     # --- ξαναστελνόμενες εκκρεμότητες (π.χ. μετά από αποτυχία) ----------------
     for pid, p in pending.items():
         if p.pop("resend", False) and p["sid"] in srcs:
-            src = srcs[p["sid"]]
-            p["preview"] = preview_text(src, p)
-            if len(p.get("slides") or []) > 1:
-                tg.send_album([ROOT / x for x in p["slides"]])
-            p["msg"] = tg.send_preview(ROOT / p["img"], p["preview"], pid,
-                                       compose.styles_for(p), p.get("style", "blue"))
+            send_pending(tg, srcs[p["sid"]], pid, p)
             log(f"📨 {p['sid']}: ξαναστάλθηκε για έγκριση: {p['title'][:60]}")
+
+    def from_right_chat(pid: str, p: dict) -> bool:
+        ok = tg.chat_of.get(pid, pchat(tg, p)) == pchat(tg, p)
+        if not ok:
+            log(f"⚠️  {p['sid']}: αγνοήθηκε πάτημα από άλλη ομάδα για «{p['title'][:40]}»")
+        return ok
 
     # --- 🔵 / ⚪ / 📸 αλλαγή στυλ --------------------------------------------------
     for pid, style in tg.styles.items():
         p = pending.get(pid)
-        if not p or p.get("approved") or p["sid"] not in srcs:
+        if not p or p.get("approved") or p["sid"] not in srcs or not from_right_chat(pid, p):
             continue
         if style not in compose.styles_for(p) or style == p.get("style", "blue"):
             continue
@@ -633,20 +706,19 @@ def approval_round(tg: Telegram, cfg: dict, state: dict, new_jobs: list, categor
                 regen_images(src, p, style)
         except Exception as e:
             log(f"⚠️  {p['sid']}: δεν άλλαξε το στυλ ({e})")
-            tg.notify(f"⚠️ Δεν άλλαξε το στυλ για «{p['title'][:60]}»: {e}")
+            with tg.to(pchat(tg, p)):
+                tg.notify(f"⚠️ Δεν άλλαξε το στυλ για «{p['title'][:60]}»: {e}")
             continue
         label = tg.STYLE_LABELS.get(style, style)
-        tg.set_status(p["msg"], p["preview"], f"🎨 Άλλαξε σε {label} — δες τη νέα προεπισκόπηση")
-        p["preview"] = preview_text(src, p)
-        if len(p.get("slides") or []) > 1:
-            tg.send_album([ROOT / x for x in p["slides"]])
-        p["msg"] = tg.send_preview(ROOT / p["img"], p["preview"], pid, compose.styles_for(p), style)
+        with tg.to(pchat(tg, p)):
+            tg.set_status(p["msg"], p["preview"], f"🎨 Άλλαξε σε {label} — δες τη νέα προεπισκόπηση")
+        send_pending(tg, src, pid, p, style)
         log(f"🎨 {p['sid']}: στυλ {style}{' από ' + tg.who.get(pid, '') if tg.who.get(pid) else ''}: {p['title'][:60]}")
 
     # --- ✅ / ❌ ----------------------------------------------------------------
     for pid, choice in decisions.items():
         p = pending.get(pid)
-        if not p or p.get("approved"):
+        if not p or p.get("approved") or not from_right_chat(pid, p):
             continue
         by = tg.who.get(pid, "")
         p["by"] = by
@@ -656,7 +728,8 @@ def approval_round(tg: Telegram, cfg: dict, state: dict, new_jobs: list, categor
         else:
             if not p.get("test"):
                 seen_bucket(state, p["sid"], p["key"])["seen"][p["key"]] = "rejected"
-            tg.set_status(p["msg"], p["preview"], "❌ Δεν ανέβηκε (απορρίφθηκε" + (f" από {by})" if by else ")"))
+            with tg.to(pchat(tg, p)):
+                tg.set_status(p["msg"], p["preview"], "❌ Δεν ανέβηκε (απορρίφθηκε" + (f" από {by})" if by else ")"))
             log(f"👎 {p['sid']}: απορρίφθηκε: {p['title'][:60]}")
             del pending[pid]
 
@@ -666,24 +739,26 @@ def approval_round(tg: Telegram, cfg: dict, state: dict, new_jobs: list, categor
         entry = {"sid": src["id"], "key": key, "title": title, "date": date.isoformat(),
                  "excerpt": excerpt, "link": link, "category": category_of.get(key, ""),
                  "img": str(img.relative_to(ROOT)),
-                 "story": str(story_img.relative_to(ROOT)) if story_img else None}
-        preview = preview_text(src, entry)
+                 "story": str(story_img.relative_to(ROOT)) if story_img else None, "style": "blue"}
         try:
-            msg = tg.send_preview(img, preview, pid, ["blue", "white"], "blue")
+            send_pending(tg, src, pid, entry)
         except Exception as e:
             log(f"⚠️  {src['id']}: δεν στάλθηκε προεπισκόπηση στο Telegram ({e}), θα ξαναδοκιμάσει")
             continue
         state[src["id"]]["seen"][key] = "pending"
-        pending[pid] = {**entry, "msg": msg, "preview": preview}
+        pending[pid] = entry
         log(f"📨 {src['id']}: στάλθηκε για έγκριση: {title[:60]}")
 
-    compose.ensure_keyboard(tg, state, usable)
+    for chat, members in groups.items():
+        with tg.to(chat):
+            compose.ensure_keyboard(tg, state, members, chat)
 
     # --- όσα έχουν εγκριθεί (τώρα ή νωρίτερα) και δεν ανέβηκαν ακόμα -------------
     ready = []
     for pid, p in list(pending.items()):
         if p.get("approved") and p.get("test"):          # δοκιμαστική: δεν ανεβαίνει ποτέ
-            tg.set_status(p["msg"], p["preview"], "🧪 Δοκιμή — εγκρίθηκε, αλλά δεν ανεβαίνει στο Instagram")
+            with tg.to(pchat(tg, p)):
+                tg.set_status(p["msg"], p["preview"], "🧪 Δοκιμή — εγκρίθηκε, αλλά δεν ανεβαίνει στο Instagram")
             del pending[pid]
             continue
         if p.get("approved") and p["sid"] in srcs:
@@ -737,7 +812,7 @@ def edit_pending(tg, pending: dict, pid: str, text: str, srcs: dict, by_msg: dic
         tg.send_album([ROOT / x for x in p["slides"]])
     p["msg"] = tg.send_preview(ROOT / p["img"], p["preview"], pid,
                                compose.styles_for(p), p.get("style", "blue"))
-    by_msg[p["msg"]] = pid
+    by_msg[(pchat(tg, p), p["msg"])] = pid
     p.pop("approved", None)      # μετά από αλλαγή χρειάζεται νέο ✅
     log(f"✏️  {p['sid']}: άλλαξε {what}: {p['title'][:60]}")
 
@@ -803,7 +878,8 @@ def done_pending(tg, state: dict, key: str, status: str) -> None:
     if p:
         if p.get("by") and status.startswith("✅"):
             status += f" (εγκρίθηκε από {p['by']})"
-        tg.set_status(p["msg"], p["preview"], status)
+        with tg.to(pchat(tg, p)):
+            tg.set_status(p["msg"], p["preview"], status)
 
 
 def parse_tokens(raw: str, ids: list[str]) -> dict:
@@ -859,7 +935,9 @@ def main() -> int:
             log("⏸  Είναι ενεργή η έγκριση μέσω Telegram αλλά λείπει το secret "
                 "TELEGRAM_BOT_TOKEN. Δεν γίνεται τίποτα μέχρι να μπει.")
             return 0
-        tg = Telegram(tg_token, st.get("telegram_chat_id"), st.get("telegram_queue_url"))
+        tg = Telegram(tg_token, st.get("telegram_chat_id"), st.get("telegram_queue_url"),
+                      [x.get("telegram_chat_id") for x in cfg["sources"] if x.get("enabled", True)])
+        tg.register_chats()          # ο Worker απαντά άμεσα μόνο σε αυτές τις ομάδες
 
     if os.environ.get("STORIES"):
         # Χειροκίνητο ανέβασμα εικόνων ως stories: STORIES="mie:path1,path2,..."
@@ -910,7 +988,7 @@ def main() -> int:
             continue
 
         first_time = sid not in state
-        if src.get("eclass") and not args.feed_file and not first_time:
+        if eclass_courses(src) and not args.feed_file and not first_time:
             entries += fetch_eclass(src, state, cfg.get("settings", {}))
         s = state.setdefault(sid, {"seen": {}, "attempts": {}})
         new = [e for e in entries if item_key(e) not in s["seen"]]

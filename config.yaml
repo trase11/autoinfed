@@ -10,6 +10,13 @@
 #               Αν το σβήσεις, ανεβαίνουν όλα.
 #   hashtags    (προαιρετικό) μπαίνουν στο τέλος της λεζάντας
 #   enabled     false = προσωρινά εκτός
+#   telegram_chat_id  (προαιρετικό) η ομάδα Telegram του τμήματος. Γράψε /id μέσα
+#               στην ομάδα (με το bot μέσα) και βάλε εδώ τον αριθμό. Χωρίς αυτό, οι
+#               ανακοινώσεις του τμήματος πάνε στην κεντρική ομάδα (settings).
+#   eclass / eclass_prefix  (προαιρετικά) μαθήματα eClass. Για νέο μάθημα αρκεί να
+#               βάλεις τον προσωπικό σύνδεσμο RSS στο secret ECLASS_RSS, μία γραμμή
+#               ανά μάθημα, με το τμήμα μπροστά:  civ: https://eclass.uth.gr/...
+#               (ή χωρίς πρόθεμα, αν ο κωδικός ξεκινά με το eclass_prefix, π.χ. MIE_)
 
 sources:
   - id: mie
@@ -19,6 +26,8 @@ sources:
     categories: ["Ανακοινώσεις", "Νέα"]
     hashtags: "#uth #mie #ΠανεπιστήμιοΘεσσαλίας"
     enabled: true
+    telegram_chat_id: -5131620464      # η σημερινή ομάδα
+    eclass_prefix: MIE_
     # Ανακοινώσεις μαθημάτων eClass στον ίδιο λογαριασμό (κωδικός από το
     # https://eclass.uth.gr/courses/<ΚΩΔΙΚΟΣ>/ και όνομα για την ετικέτα της εικόνας)
     eclass:
@@ -41,14 +50,16 @@ sources:
     feed: "https://civ.uth.gr/news/feed/"       # όπως στο econ: ξεχωριστή ενότητα news
     color: "#8a1c1c"
     hashtags: "#uth #civ #ΠανεπιστήμιοΘεσσαλίας"
-    enabled: false   # ενεργοποίησέ το μετά τη δοκιμή
+    enabled: true    # ξεκινά μόλις μπει το token «civ: …» στο IG_TOKENS
+    # telegram_chat_id: -100…            # ← ο αριθμός από το /id της ομάδας του τμήματος
 
   - id: prd
     name: "Μηχανικών Χωροταξίας ΠΘ"
     feed: "https://www.prd.uth.gr/?feed=rss2"
     color: "#6a3d9a"
     hashtags: "#uth #prd #ΠανεπιστήμιοΘεσσαλίας"
-    enabled: false   # ενεργοποίησέ το μετά τη δοκιμή
+    enabled: true    # ξεκινά μόλις μπει το token «prd: …» στο IG_TOKENS
+    # telegram_chat_id: -100…            # ← ο αριθμός από το /id της ομάδας του τμήματος
 
   - id: gdia
     name: "Γλωσσικών & Διαπολιτιστικών ΠΘ"
@@ -77,7 +88,8 @@ sources:
     feed: "https://www.arch.uth.gr"             # μόνο για το domain στην εικόνα
     color: "#37474f"
     hashtags: "#uth #arch #ΠανεπιστήμιοΘεσσαλίας"
-    enabled: true
+    enabled: true    # ξεκινά μόλις μπει το token «arch: …» στο IG_TOKENS
+    # telegram_chat_id: -100…            # ← ο αριθμός από το /id της ομάδας του τμήματος
 
 settings:
   # Πόσα posts το πολύ ανά σύλλογο σε κάθε ωριαίο έλεγχο
